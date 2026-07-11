@@ -31,6 +31,7 @@ button { cursor: pointer; }
 @keyframes toastIn { from { transform: translate(-50%, 12px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 .empty-state__button { margin-top: 17px; }
 .field-hint { display: flex; align-items: center; gap: 5px; margin-top: -5px; color: #a99bff; font-size: 10px; }
+.form-preview { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 11px; border: 1px solid rgba(82, 211, 255, .15); border-radius: 10px; background: linear-gradient(120deg, rgba(31, 88, 116, .14), rgba(55, 38, 111, .13)); }.form-preview div { display: grid; gap: 4px; }.form-preview span { color: #8190aa; font-size: 10px; }.form-preview strong { color: #dbe9ff; font-size: 15px; letter-spacing: -.03em; }
 .chart-estimate-note { color: #6f7e99; font-size: 10px; }
 .records-table tbody tr { transition: background .18s ease, box-shadow .18s ease; }.records-table tbody tr:hover { background: rgba(98, 111, 181, .09); box-shadow: inset 3px 0 0 rgba(113, 146, 255, .65); }
 .mobile-table-hint { display: none; }

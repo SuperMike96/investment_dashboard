@@ -45,6 +45,7 @@ import {
 } from './utils/finance'
 
 const STORAGE_KEY = 'wealth-yield-dashboard-investments'
+const CATEGORIES = ['现金管理', '固收理财', '基金', '股票/ETF', '黄金/商品', '其他']
 
 type FormValues = Omit<Investment, 'id'>
 type ChartRange = '30D' | '90D' | '1Y' | 'ALL'
@@ -55,6 +56,7 @@ const createEmptyForm = (): FormValues => ({
   date: todayISO(),
   profit: 0,
   lockupDays: undefined,
+  category: '其他',
   note: '',
 })
 
@@ -104,7 +106,7 @@ function parseCsvImport(text: string): Investment[] {
     const amount = Number(cells[indexOf('购入金额')] ?? 0)
     const profit = Number(cells[indexOf('当前暂时盈利')] ?? 0)
     const lockupValue = Number(cells[indexOf('封闭期（天）')] ?? 0)
-    return { id: crypto.randomUUID(), name: cells[indexOf('名称')] ?? '', amount, date: cells[indexOf('购入日期')] ?? '', profit, lockupDays: lockupValue > 0 ? lockupValue : undefined, note: cells[indexOf('备注')] ?? '' }
+    return { id: crypto.randomUUID(), name: cells[indexOf('名称')] ?? '', amount, date: cells[indexOf('购入日期')] ?? '', profit, lockupDays: lockupValue > 0 ? lockupValue : undefined, category: cells[indexOf('类型')] ?? '其他', note: cells[indexOf('备注')] ?? '' }
   }).filter((item) => item.name && item.amount > 0 && item.date && Number.isFinite(item.profit))
 }
 
@@ -224,6 +226,7 @@ function App() {
       amount,
       profit,
       lockupDays: form.lockupDays ? Number(form.lockupDays) : undefined,
+      category: form.category || '其他',
       note: form.note?.trim(),
     }
     setInvestments((previous) => (editingId ? previous.map((item) => (item.id === editingId ? record : item)) : [record, ...previous]))
@@ -235,7 +238,7 @@ function App() {
 
   const startEdit = (investment: Investment) => {
     setEditingId(investment.id)
-    setForm({ name: investment.name, amount: investment.amount, date: investment.date, profit: investment.profit, lockupDays: investment.lockupDays, note: investment.note ?? '' })
+    setForm({ name: investment.name, amount: investment.amount, date: investment.date, profit: investment.profit, lockupDays: investment.lockupDays, category: investment.category ?? '其他', note: investment.note ?? '' })
     setFormError('')
     document.getElementById('record-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
@@ -270,9 +273,9 @@ function App() {
     if (type === 'json') {
       downloadFile(`wealth-yield-${todayISO()}.json`, JSON.stringify(investments, null, 2), 'application/json')
     } else {
-      const header = ['名称', '购入金额', '购入日期', '当前暂时盈利', '封闭期（天）', '备注']
+      const header = ['名称', '购入金额', '购入日期', '当前暂时盈利', '封闭期（天）', '类型', '备注']
       const escape = (value: string | number | undefined) => `"${String(value ?? '').replace(/"/g, '""')}"`
-      const rows = investments.map((item) => [item.name, item.amount, item.date, item.profit, item.lockupDays ?? '', item.note].map(escape).join(','))
+      const rows = investments.map((item) => [item.name, item.amount, item.date, item.profit, item.lockupDays ?? '', item.category ?? '其他', item.note].map(escape).join(','))
       downloadFile(`wealth-yield-${todayISO()}.csv`, `\uFEFF${header.join(',')}\n${rows.join('\n')}`, 'text/csv;charset=utf-8')
     }
     setToast(`已导出 ${type.toUpperCase()} 文件`)
@@ -406,6 +409,7 @@ function App() {
               </div>
               <label>封闭期（天） <span>（选填）</span><input value={form.lockupDays || ''} type="number" min="1" step="1" placeholder="如：180" onChange={(event) => setForm({ ...form, lockupDays: event.target.value ? Number(event.target.value) : undefined })} /></label>
               {form.lockupDays && formLockup.unlockDate && <div className="field-hint"><CalendarDays size={13} /> 预计 {formLockup.state === 'unlocked' ? '已解锁' : `解锁于 ${formLockup.unlockDate} · 剩余 ${formLockup.daysRemaining} 天`}</div>}
+              <label>理财类型 <span>（选填）</span><select value={form.category || '其他'} onChange={(event) => setForm({ ...form, category: event.target.value })}>{CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
               <label>当前暂时盈利（元）<input value={form.profit || ''} type="number" step="0.01" placeholder="可填写负数，如 -200" onChange={(event) => setForm({ ...form, profit: Number(event.target.value) })} /></label>
               <label>备注 <span>（选填）</span><textarea value={form.note} maxLength={100} placeholder="如：产品期限、风险等级等" rows={2} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label>
               {formError && <p className="form-error">{formError}</p>}
@@ -417,7 +421,7 @@ function App() {
 
           <article className="glass-panel records-panel">
             <div className="records-header">
-              <div><span className="eyebrow">POSITIONS</span><h2>理财持仓明细 <b>{investments.length}</b></h2></div>
+              <div><span className="eyebrow">POSITIONS</span><h2>理财持仓明细 <b>{filter === 'all' ? investments.length : `${visibleInvestments.length}/${investments.length}`}</b></h2></div>
               <div className="records-actions">
                 <button className="icon-button" title="导入 JSON 或 CSV" onClick={() => importRef.current?.click()}><FileUp size={17} /></button>
                 <button className="icon-button" title="导出 CSV" onClick={() => exportData('csv')}><Download size={17} /></button>
@@ -438,7 +442,7 @@ function App() {
                   <tbody>{visibleInvestments.map((investment) => {
                     const isPositive = investment.profit >= 0
                     return <tr key={investment.id}>
-                      <td><strong>{investment.name}</strong><small>{investment.note || '未添加备注'}</small></td>
+                      <td><strong>{investment.name}</strong><small><span className="category-label">{investment.category || '其他'}</span>{investment.note || '未添加备注'}</small></td>
                       <td>{privacyMode ? '••••••' : formatCurrency(investment.amount)}</td>
                       <td>{privacyMode ? '••••••' : formatCurrency(investment.amount + investment.profit)}</td>
                       <td>{investment.date}</td>

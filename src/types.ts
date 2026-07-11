@@ -5,6 +5,7 @@ export interface Investment {
   date: string
   profit: number
   lockupDays?: number
+  category?: string
   note?: string
 }
 

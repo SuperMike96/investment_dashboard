@@ -14,7 +14,6 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   CircleDollarSign,
   Download,
   Eye,
@@ -331,7 +330,6 @@ function App() {
           <div className="topbar__right">
             <button className={`privacy-button ${privacyMode ? 'active' : ''}`} onClick={() => setPrivacyMode((enabled) => !enabled)}>{privacyMode ? <EyeOff size={15} /> : <Eye size={15} />}{privacyMode ? '隐私已开启' : '隐私模式'}</button>
             <div className="date-pill"><CalendarDays size={15} /> {new Intl.DateTimeFormat('zh-CN', { dateStyle: 'full' }).format(new Date())}</div>
-            <button className="icon-button mobile-only" aria-label="菜单"><ChevronDown size={19} /></button>
           </div>
         </header>
 

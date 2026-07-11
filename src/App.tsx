@@ -467,9 +467,9 @@ function App() {
             <div className="records-header">
               <div><span className="eyebrow">POSITIONS</span><h2>理财持仓明细 <b>{filter === 'all' && categoryFilter === 'all' ? investments.length : `${visibleInvestments.length}/${investments.length}`}</b></h2></div>
               <div className="records-actions">
-                <button className="icon-button" title="导入 JSON 或 CSV" onClick={() => importRef.current?.click()}><FileUp size={17} /></button>
-                <button className="icon-button" title="导出 CSV" onClick={() => exportData('csv')}><Download size={17} /></button>
-                <button className="icon-button danger-button" title="清空所有记录" onClick={resetAll}><RotateCcw size={17} /></button>
+                <button className="icon-button" aria-label="导入 JSON 或 CSV" title="导入 JSON 或 CSV" onClick={() => importRef.current?.click()}><FileUp size={17} /></button>
+                <button className="icon-button" aria-label="导出 CSV" title="导出 CSV" onClick={() => exportData('csv')}><Download size={17} /></button>
+                <button className="icon-button danger-button" aria-label="清空所有记录" title="清空所有记录" onClick={resetAll}><RotateCcw size={17} /></button>
                 <input ref={importRef} className="hidden" type="file" accept="application/json,.json,text/csv,.csv" onChange={importData} />
               </div>
             </div>

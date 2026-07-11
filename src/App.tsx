@@ -322,7 +322,9 @@ function App() {
       const cleaned = parsed
         .filter((item): item is Investment => {
           const purchaseDate = item && typeof item.date === 'string' ? new Date(`${item.date}T23:59:59`) : new Date('invalid')
-          return Boolean(item && typeof item.name === 'string' && Number(item.amount) > 0 && Number.isFinite(purchaseDate.getTime()) && purchaseDate <= new Date() && Number.isFinite(Number(item.profit)))
+          const amount = Number(item?.amount)
+          const profit = Number(item?.profit)
+          return Boolean(item && typeof item.name === 'string' && amount > 0 && Number.isFinite(purchaseDate.getTime()) && purchaseDate <= new Date() && Number.isFinite(profit) && profit >= -amount)
         })
         .map((item) => ({ ...item, id: typeof item.id === 'string' ? item.id : crypto.randomUUID(), amount: Number(item.amount), profit: Number(item.profit), lockupDays: item.lockupDays ? Number(item.lockupDays) : undefined }))
       if (!cleaned.length) throw new Error('empty')

@@ -371,7 +371,7 @@ function App() {
             </div>
           </div>
           <div className="topbar__right">
-            <button className={`privacy-button ${privacyMode ? 'active' : ''}`} onClick={() => setPrivacyMode((enabled) => !enabled)}>{privacyMode ? <EyeOff size={15} /> : <Eye size={15} />}{privacyMode ? '隐私已开启' : '隐私模式'}</button>
+            <button className={`privacy-button ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode((enabled) => !enabled)}>{privacyMode ? <EyeOff size={15} /> : <Eye size={15} />}{privacyMode ? '隐私已开启' : '隐私模式'}</button>
             <div className="date-pill"><CalendarDays size={15} /> {new Intl.DateTimeFormat('zh-CN', { dateStyle: 'full' }).format(new Date())}</div>
           </div>
         </header>

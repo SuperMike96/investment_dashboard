@@ -17,6 +17,8 @@ import {
   ChevronDown,
   CircleDollarSign,
   Download,
+  Eye,
+  EyeOff,
   Edit3,
   FileUp,
   Landmark,
@@ -142,6 +144,7 @@ function App() {
   const [sortKey, setSortKey] = useState<SortKey>('date')
   const [filter, setFilter] = useState<FilterKey>('all')
   const [chartRange, setChartRange] = useState<ChartRange>('ALL')
+  const [privacyMode, setPrivacyMode] = useState(false)
   const [toast, setToast] = useState('')
   const importRef = useRef<HTMLInputElement>(null)
 
@@ -279,6 +282,7 @@ function App() {
             </div>
           </div>
           <div className="topbar__right">
+            <button className={`privacy-button ${privacyMode ? 'active' : ''}`} onClick={() => setPrivacyMode((enabled) => !enabled)}>{privacyMode ? <EyeOff size={15} /> : <Eye size={15} />}{privacyMode ? '隐私已开启' : '隐私模式'}</button>
             <div className="date-pill"><CalendarDays size={15} /> {new Intl.DateTimeFormat('zh-CN', { dateStyle: 'full' }).format(new Date())}</div>
             <button className="icon-button mobile-only" aria-label="菜单"><ChevronDown size={19} /></button>
           </div>
@@ -298,10 +302,10 @@ function App() {
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="总投入" value={formatCurrency(metrics.totalAmount)} hint={`${investments.length} 笔理财记录`} icon={<WalletCards size={19} />} tone="violet" />
-          <MetricCard label="当前总收益" value={formatCurrency(metrics.totalProfit, true)} hint={<span className={profitTone}>{profitIcon} 浮动收益实时汇总</span>} icon={<CircleDollarSign size={19} />} tone="cyan" />
-          <MetricCard label="总收益率" value={formatPercent(metrics.returnRate)} hint="累计收益 / 累计投入" icon={<TrendingUp size={19} />} tone="green" />
-          <MetricCard label="年化收益率" value={formatPercent(metrics.annualizedRate)} hint={metrics.annualizedMethod === 'xirr' ? 'XIRR · 非定期现金流' : '资金加权估算'} icon={<BarChart3 size={19} />} tone="pink" />
+          <MetricCard label="总投入" value={privacyMode ? '••••••' : formatCurrency(metrics.totalAmount)} hint={`${investments.length} 笔理财记录`} icon={<WalletCards size={19} />} tone="violet" />
+          <MetricCard label="当前总收益" value={privacyMode ? '••••••' : formatCurrency(metrics.totalProfit, true)} hint={<span className={profitTone}>{profitIcon} 浮动收益实时汇总</span>} icon={<CircleDollarSign size={19} />} tone="cyan" />
+          <MetricCard label="总收益率" value={privacyMode ? '••••' : formatPercent(metrics.returnRate)} hint="累计收益 / 累计投入" icon={<TrendingUp size={19} />} tone="green" />
+          <MetricCard label="年化收益率" value={privacyMode ? '••••' : formatPercent(metrics.annualizedRate)} hint={metrics.annualizedMethod === 'xirr' ? 'XIRR · 非定期现金流' : '资金加权估算'} icon={<BarChart3 size={19} />} tone="pink" />
         </section>
 
         <section className="dashboard-grid mt-5">
@@ -325,7 +329,7 @@ function App() {
                   <CartesianGrid stroke="#334155" strokeDasharray="3 6" vertical={false} opacity={0.55} />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#8191ad', fontSize: 12 }} dy={10} />
                   <YAxis hide />
-                  <Tooltip contentStyle={{ background: '#12192d', border: '1px solid #32415f', borderRadius: 12, boxShadow: '0 15px 35px rgba(0,0,0,.28)' }} labelStyle={{ color: '#cbd5e1' }} itemStyle={{ color: '#e2e8f0' }} formatter={(value, name) => [formatCurrency(Number(value ?? 0)), String(name) === 'value' ? '组合当前价值' : '累计收益']} />
+                  <Tooltip contentStyle={{ background: '#12192d', border: '1px solid #32415f', borderRadius: 12, boxShadow: '0 15px 35px rgba(0,0,0,.28)' }} labelStyle={{ color: '#cbd5e1' }} itemStyle={{ color: '#e2e8f0' }} formatter={(value, name) => [privacyMode ? '••••••' : formatCurrency(Number(value ?? 0)), String(name) === 'value' ? '组合当前价值' : '累计收益']} />
                   <Area type="monotone" dataKey="value" stroke="#38d9ff" strokeWidth={3} fill="url(#valueGradient)" activeDot={{ r: 5, fill: '#38d9ff', stroke: '#0a1022', strokeWidth: 3 }} />
                   <Area type="monotone" dataKey="profit" stroke="#a78bfa" strokeWidth={2.5} fill="url(#profitGradient)" activeDot={{ r: 4, fill: '#a78bfa', stroke: '#0a1022', strokeWidth: 3 }} />
                 </AreaChart>
@@ -388,13 +392,13 @@ function App() {
                     const isPositive = investment.profit >= 0
                     return <tr key={investment.id}>
                       <td><strong>{investment.name}</strong><small>{investment.note || '未添加备注'}</small></td>
-                      <td>{formatCurrency(investment.amount)}</td>
+                      <td>{privacyMode ? '••••••' : formatCurrency(investment.amount)}</td>
                       <td>{investment.date}</td>
                       <td>{daysHeld(investment.date)} 天</td>
                       <td>{(() => { const lockup = lockupStatus(investment.date, investment.lockupDays); return lockup.state === 'none' ? <span className="lockup-badge lockup-badge--none">未设置</span> : lockup.state === 'unlocked' ? <span className="lockup-badge lockup-badge--done"><b>已解锁</b><small>{lockup.unlockDate}</small></span> : <span className="lockup-badge lockup-badge--active"><b>剩 {lockup.daysRemaining} 天</b><small>解锁 {lockup.unlockDate}</small></span> })()}</td>
-                      <td className={isPositive ? 'positive' : 'negative'}>{formatCurrency(investment.profit, true)}</td>
-                      <td className={isPositive ? 'positive' : 'negative'}>{formatPercent(returnRate(investment))}</td>
-                      <td className={annualizedRate(investment) >= 0 ? 'positive' : 'negative'}>{formatPercent(annualizedRate(investment))}</td>
+                      <td className={isPositive ? 'positive' : 'negative'}>{privacyMode ? '••••••' : formatCurrency(investment.profit, true)}</td>
+                      <td className={isPositive ? 'positive' : 'negative'}>{privacyMode ? '••••' : formatPercent(returnRate(investment))}</td>
+                      <td className={annualizedRate(investment) >= 0 ? 'positive' : 'negative'}>{privacyMode ? '••••' : formatPercent(annualizedRate(investment))}</td>
                       <td><div className="row-actions"><button onClick={() => startEdit(investment)} aria-label={`编辑 ${investment.name}`}><Edit3 size={15} /></button><button onClick={() => removeInvestment(investment.id)} aria-label={`删除 ${investment.name}`}><Trash2 size={15} /></button></div></td>
                     </tr>
                   })}</tbody>

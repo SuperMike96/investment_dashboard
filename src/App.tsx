@@ -46,6 +46,7 @@ import {
 const STORAGE_KEY = 'wealth-yield-dashboard-investments'
 
 type FormValues = Omit<Investment, 'id'>
+type ChartRange = '30D' | '90D' | '1Y' | 'ALL'
 
 const createEmptyForm = (): FormValues => ({
   name: '',
@@ -77,15 +78,17 @@ function downloadFile(filename: string, contents: string, type: string) {
   URL.revokeObjectURL(url)
 }
 
-function makeTrendData(investments: Investment[]) {
+function makeTrendData(investments: Investment[], range: ChartRange) {
   const now = new Date()
   const earliest = investments.length
     ? Math.min(...investments.map((investment) => new Date(`${investment.date}T00:00:00`).getTime()))
     : now.getTime() - 30 * 86_400_000
-  const span = Math.max(now.getTime() - earliest, 10 * 86_400_000)
+  const rangeDays: Record<Exclude<ChartRange, 'ALL'>, number> = { '30D': 30, '90D': 90, '1Y': 365 }
+  const rangeStart = range === 'ALL' ? earliest : Math.max(earliest, now.getTime() - rangeDays[range] * 86_400_000)
+  const span = Math.max(now.getTime() - rangeStart, 10 * 86_400_000)
 
   return Array.from({ length: 12 }, (_, index) => {
-    const point = new Date(earliest + (span * index) / 11)
+    const point = new Date(rangeStart + (span * index) / 11)
     const totals = investments.reduce(
       (acc, investment) => {
         const purchaseTime = new Date(`${investment.date}T00:00:00`).getTime()
@@ -138,6 +141,7 @@ function App() {
   const [formError, setFormError] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('date')
   const [filter, setFilter] = useState<FilterKey>('all')
+  const [chartRange, setChartRange] = useState<ChartRange>('ALL')
   const [toast, setToast] = useState('')
   const importRef = useRef<HTMLInputElement>(null)
 
@@ -152,7 +156,7 @@ function App() {
   }, [toast])
 
   const metrics = useMemo(() => portfolioMetrics(investments), [investments])
-  const trendData = useMemo(() => makeTrendData(investments), [investments])
+  const trendData = useMemo(() => makeTrendData(investments, chartRange), [chartRange, investments])
   const visibleInvestments = useMemo(() => {
     return [...investments]
       .filter((investment) => filter === 'all' || (filter === 'profit' ? investment.profit >= 0 : investment.profit < 0))
@@ -252,6 +256,9 @@ function App() {
 
   const profitTone = metrics.totalProfit >= 0 ? 'positive' : 'negative'
   const profitIcon = metrics.totalProfit >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />
+  const chartStartValue = trendData[0]?.value ?? 0
+  const chartEndValue = trendData[trendData.length - 1]?.value ?? 0
+  const chartChange = chartStartValue ? (chartEndValue - chartStartValue) / chartStartValue : 0
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#080b1c] text-slate-100">
@@ -300,8 +307,9 @@ function App() {
                 <span className="eyebrow">表现趋势</span>
                 <h2>资产增长曲线</h2>
               </div>
-              <div className="live-status"><i /> 数据已同步</div>
+              <div className="chart-heading-right"><div className="live-status"><i /> 数据已同步</div><span className={chartChange >= 0 ? 'chart-change positive' : 'chart-change negative'}>{chartChange >= 0 ? '+' : ''}{(chartChange * 100).toFixed(2)}% 区间变化</span></div>
             </div>
+            <div className="range-tabs" role="tablist" aria-label="趋势时间范围">{(['30D', '90D', '1Y', 'ALL'] as ChartRange[]).map((range) => <button key={range} className={chartRange === range ? 'selected' : ''} onClick={() => setChartRange(range)} role="tab" aria-selected={chartRange === range}>{range === 'ALL' ? '全部' : range === '1Y' ? '1 年' : range === '90D' ? '90 天' : '30 天'}</button>)}</div>
             <div className="chart-key"><span><i className="key-dot key-dot--cyan" /> 组合当前价值</span><span><i className="key-dot key-dot--purple" /> 累计收益</span></div>
             <div className="h-[296px] w-full">
               <ResponsiveContainer width="100%" height="100%">

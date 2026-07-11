@@ -173,6 +173,7 @@ function App() {
   const [formError, setFormError] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('date')
   const [filter, setFilter] = useState<FilterKey>('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const [chartRange, setChartRange] = useState<ChartRange>('ALL')
   const [privacyMode, setPrivacyMode] = useState(false)
   const [toast, setToast] = useState('')
@@ -195,6 +196,7 @@ function App() {
   const visibleInvestments = useMemo(() => {
     return [...investments]
       .filter((investment) => {
+        if (categoryFilter !== 'all' && (investment.category || '其他') !== categoryFilter) return false
         if (filter === 'all') return true
         if (filter === 'locked') return lockupStatus(investment.date, investment.lockupDays).state === 'active'
         return filter === 'profit' ? investment.profit >= 0 : investment.profit < 0
@@ -205,7 +207,7 @@ function App() {
         if (sortKey === 'annualized') return annualizedRate(b) - annualizedRate(a)
         return new Date(b.date).getTime() - new Date(a.date).getTime()
       })
-  }, [filter, investments, sortKey])
+  }, [categoryFilter, filter, investments, sortKey])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -427,7 +429,7 @@ function App() {
 
           <article className="glass-panel records-panel">
             <div className="records-header">
-              <div><span className="eyebrow">POSITIONS</span><h2>理财持仓明细 <b>{filter === 'all' ? investments.length : `${visibleInvestments.length}/${investments.length}`}</b></h2></div>
+              <div><span className="eyebrow">POSITIONS</span><h2>理财持仓明细 <b>{filter === 'all' && categoryFilter === 'all' ? investments.length : `${visibleInvestments.length}/${investments.length}`}</b></h2></div>
               <div className="records-actions">
                 <button className="icon-button" title="导入 JSON 或 CSV" onClick={() => importRef.current?.click()}><FileUp size={17} /></button>
                 <button className="icon-button" title="导出 CSV" onClick={() => exportData('csv')}><Download size={17} /></button>
@@ -439,7 +441,7 @@ function App() {
               <div className="filter-group">
                 {(['all', 'profit', 'loss', 'locked'] as FilterKey[]).map((key) => <button key={key} className={filter === key ? 'selected' : ''} onClick={() => setFilter(key)}>{key === 'all' ? '全部' : key === 'profit' ? '盈利' : key === 'loss' ? '亏损' : '封闭中'}</button>)}
               </div>
-              <label className="sort-select">排序：<select value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}><option value="date">购入日期</option><option value="value">当前价值</option><option value="return">收益率</option><option value="annualized">年化收益率</option></select></label>
+              <div className="select-controls"><label className="sort-select">类型：<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">全部类型</option>{CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><label className="sort-select">排序：<select value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}><option value="date">购入日期</option><option value="value">当前价值</option><option value="return">收益率</option><option value="annualized">年化收益率</option></select></label></div>
             </div>
             {visibleInvestments.length ? (
               <div className="records-table-wrap">

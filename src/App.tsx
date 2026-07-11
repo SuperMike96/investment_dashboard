@@ -259,6 +259,9 @@ function App() {
   const chartStartValue = trendData[0]?.value ?? 0
   const chartEndValue = trendData[trendData.length - 1]?.value ?? 0
   const chartChange = chartStartValue ? (chartEndValue - chartStartValue) / chartStartValue : 0
+  const portfolioSummary = investments.length
+    ? `${metrics.totalProfit >= 0 ? '当前组合处于盈利状态' : '当前组合处于回撤状态'} · ${investments.length} 笔持仓 · 平均持有 ${Math.round(metrics.averageDays)} 天`
+    : '还没有持仓记录，添加第一笔理财开始追踪。'
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#080b1c] text-slate-100">
@@ -286,6 +289,7 @@ function App() {
             <div className="eyebrow"><Sparkles size={14} /> 投资组合总览</div>
             <h1>让每一笔收益，都清晰可见。</h1>
             <p>实时归集你的理财数据，以 XIRR 口径呈现更接近真实表现的年化收益。</p>
+            <div className={`hero-signal ${metrics.totalProfit >= 0 ? 'hero-signal--positive' : 'hero-signal--negative'}`}><i /> {portfolioSummary}</div>
           </div>
           <div className="hero__actions">
             <button className="soft-button" onClick={() => exportData('json')}><Download size={16} /> 导出数据</button>

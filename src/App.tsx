@@ -269,6 +269,10 @@ function App() {
   const chartStartValue = trendData[0]?.value ?? 0
   const chartEndValue = trendData[trendData.length - 1]?.value ?? 0
   const chartChange = chartStartValue ? (chartEndValue - chartStartValue) / chartStartValue : 0
+  const currentValue = metrics.totalAmount + metrics.totalProfit
+  const profitableCount = investments.filter((investment) => investment.profit >= 0).length
+  const lockedCount = investments.filter((investment) => lockupStatus(investment.date, investment.lockupDays).state === 'active').length
+  const largestShare = metrics.totalAmount ? Math.max(...investments.map((investment) => investment.amount)) / metrics.totalAmount : 0
   const portfolioSummary = investments.length
     ? `${metrics.totalProfit >= 0 ? '当前组合处于盈利状态' : '当前组合处于回撤状态'} · ${investments.length} 笔持仓 · 平均持有 ${Math.round(metrics.averageDays)} 天`
     : '还没有持仓记录，添加第一笔理财开始追踪。'
@@ -345,14 +349,15 @@ function App() {
           </article>
 
           <article className="glass-panel portfolio-panel">
-            <div className="panel-heading"><div><span className="eyebrow">PORTFOLIO HEALTH</span><h2>组合健康度</h2></div><div className="orbital-icon"><TrendingUp size={20} /></div></div>
-            <div className="portfolio-score"><span>{Math.min(99, Math.max(0, Math.round(68 + metrics.returnRate * 450)))}</span><small>/ 100</small></div>
-            <div className="score-bar"><i style={{ width: `${Math.min(99, Math.max(2, 68 + metrics.returnRate * 450))}%` }} /></div>
-            <div className="health-items">
-              <div><span>平均持有周期</span><strong>{Math.round(metrics.averageDays || 0)} 天</strong></div>
-              <div><span>盈利项目占比</span><strong>{investments.length ? `${Math.round((investments.filter((item) => item.profit >= 0).length / investments.length) * 100)}%` : '—'}</strong></div>
-              <div><span>计算口径</span><strong>{metrics.annualizedMethod === 'xirr' ? 'XIRR 年化' : '加权估算'}</strong></div>
+            <div className="panel-heading"><div><span className="eyebrow">PORTFOLIO CHECK</span><h2>组合检查</h2></div><div className="orbital-icon"><TrendingUp size={20} /></div></div>
+            <div className="inspection-hero"><span>当前估算价值</span><strong>{privacyMode ? '••••••' : formatCurrency(currentValue)}</strong><small className={metrics.totalProfit >= 0 ? 'positive' : 'negative'}>{privacyMode ? '••••' : formatPercent(metrics.returnRate)} 累计回报</small></div>
+            <div className="inspection-grid">
+              <div><span>盈利项目</span><strong>{profitableCount} / {investments.length || 0}</strong></div>
+              <div><span>封闭中</span><strong>{lockedCount} 笔</strong></div>
+              <div><span>平均持有</span><strong>{Math.round(metrics.averageDays || 0)} 天</strong></div>
+              <div><span>最大单笔占比</span><strong>{privacyMode ? '••••' : `${(largestShare * 100).toFixed(1)}%`}</strong></div>
             </div>
+            <div className="concentration-bar"><i style={{ width: `${Math.min(100, largestShare * 100)}%` }} /></div><small className="concentration-note">最大单笔投入占总投入比例</small>
           </article>
         </section>
 

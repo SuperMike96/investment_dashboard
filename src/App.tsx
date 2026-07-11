@@ -310,7 +310,10 @@ function App() {
       const parsed = file.name.toLowerCase().endsWith('.csv') ? parseCsvImport(contents) : JSON.parse(contents)
       if (!Array.isArray(parsed)) throw new Error('invalid')
       const cleaned = parsed
-        .filter((item): item is Investment => item && typeof item.name === 'string' && Number(item.amount) > 0 && typeof item.date === 'string' && Number.isFinite(Number(item.profit)))
+        .filter((item): item is Investment => {
+          const purchaseDate = item && typeof item.date === 'string' ? new Date(`${item.date}T23:59:59`) : new Date('invalid')
+          return Boolean(item && typeof item.name === 'string' && Number(item.amount) > 0 && Number.isFinite(purchaseDate.getTime()) && purchaseDate <= new Date() && Number.isFinite(Number(item.profit)))
+        })
         .map((item) => ({ ...item, id: typeof item.id === 'string' ? item.id : crypto.randomUUID(), amount: Number(item.amount), profit: Number(item.profit), lockupDays: item.lockupDays ? Number(item.lockupDays) : undefined }))
       if (!cleaned.length) throw new Error('empty')
       setInvestments(cleaned)

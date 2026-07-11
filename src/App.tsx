@@ -277,6 +277,7 @@ function App() {
   const profitableCount = investments.filter((investment) => investment.profit >= 0).length
   const lockedCount = investments.filter((investment) => lockupStatus(investment.date, investment.lockupDays).state === 'active').length
   const largestShare = metrics.totalAmount ? Math.max(...investments.map((investment) => investment.amount)) / metrics.totalAmount : 0
+  const formLockup = lockupStatus(form.date, form.lockupDays)
   const portfolioSummary = investments.length
     ? `${metrics.totalProfit >= 0 ? '当前组合处于盈利状态' : '当前组合处于回撤状态'} · ${investments.length} 笔持仓 · 平均持有 ${Math.round(metrics.averageDays)} 天`
     : '还没有持仓记录，添加第一笔理财开始追踪。'
@@ -375,6 +376,7 @@ function App() {
                 <label>购入日期<input value={form.date} type="date" max={todayISO()} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label>
               </div>
               <label>封闭期（天） <span>（选填）</span><input value={form.lockupDays || ''} type="number" min="1" step="1" placeholder="如：180" onChange={(event) => setForm({ ...form, lockupDays: event.target.value ? Number(event.target.value) : undefined })} /></label>
+              {form.lockupDays && formLockup.unlockDate && <div className="field-hint"><CalendarDays size={13} /> 预计 {formLockup.state === 'unlocked' ? '已解锁' : `解锁于 ${formLockup.unlockDate} · 剩余 ${formLockup.daysRemaining} 天`}</div>}
               <label>当前暂时盈利（元）<input value={form.profit || ''} type="number" step="0.01" placeholder="可填写负数，如 -200" onChange={(event) => setForm({ ...form, profit: Number(event.target.value) })} /></label>
               <label>备注 <span>（选填）</span><textarea value={form.note} maxLength={100} placeholder="如：产品期限、风险等级等" rows={2} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label>
               {formError && <p className="form-error">{formError}</p>}

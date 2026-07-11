@@ -45,6 +45,7 @@ import {
 } from './utils/finance'
 
 const STORAGE_KEY = 'wealth-yield-dashboard-investments'
+const SAVE_META_KEY = 'wealth-yield-dashboard-last-saved'
 const CATEGORIES = ['现金管理', '固收理财', '基金', '股票/ETF', '黄金/商品', '其他']
 
 type FormValues = Omit<Investment, 'id'>
@@ -68,6 +69,16 @@ function loadInvestments(): Investment[] {
     return Array.isArray(parsed) ? parsed : exampleInvestments
   } catch {
     return exampleInvestments
+  }
+}
+
+function loadSavedAt() {
+  try {
+    const value = localStorage.getItem(SAVE_META_KEY)
+    const date = value ? new Date(value) : new Date()
+    return Number.isNaN(date.getTime()) ? new Date() : date
+  } catch {
+    return new Date()
   }
 }
 
@@ -177,12 +188,14 @@ function App() {
   const [chartRange, setChartRange] = useState<ChartRange>('ALL')
   const [privacyMode, setPrivacyMode] = useState(false)
   const [toast, setToast] = useState('')
-  const [savedAt, setSavedAt] = useState(() => new Date())
+  const [savedAt, setSavedAt] = useState(loadSavedAt)
   const importRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(investments))
-    setSavedAt(new Date())
+    const now = new Date()
+    localStorage.setItem(SAVE_META_KEY, now.toISOString())
+    setSavedAt(now)
   }, [investments])
 
   useEffect(() => {

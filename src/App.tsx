@@ -383,7 +383,7 @@ function App() {
                 <span className="eyebrow">表现趋势</span>
                 <h2>资产增长曲线</h2>
               </div>
-              <div className="chart-heading-right"><div className="live-status"><i /> 本地已保存 · {new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(savedAt)}</div><span className={chartChange >= 0 ? 'chart-change positive' : 'chart-change negative'}>{chartChange >= 0 ? '+' : ''}{(chartChange * 100).toFixed(2)}% 区间变化</span></div>
+              <div className="chart-heading-right"><div className="live-status" role="status"><i /> 本地已保存 · {new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(savedAt)}</div><span className={chartChange >= 0 ? 'chart-change positive' : 'chart-change negative'}>{chartChange >= 0 ? '+' : ''}{(chartChange * 100).toFixed(2)}% 区间变化</span></div>
             </div>
             <div className="range-tabs" role="tablist" aria-label="趋势时间范围">{(['30D', '90D', '1Y', 'ALL'] as ChartRange[]).map((range) => <button key={range} className={chartRange === range ? 'selected' : ''} onClick={() => setChartRange(range)} role="tab" aria-selected={chartRange === range}>{range === 'ALL' ? '全部' : range === '1Y' ? '1 年' : range === '90D' ? '90 天' : '30 天'}</button>)}</div>
             <div className="chart-key"><span><i className="key-dot key-dot--cyan" /> 组合当前价值</span><span><i className="key-dot key-dot--purple" /> 累计收益</span></div>
@@ -484,7 +484,7 @@ function App() {
         </section>
       </div>
 
-      {toast && <div className="toast"><CheckCircle2 size={17} /> {toast}</div>}
+      {toast && <div className="toast" role="status" aria-live="polite"><CheckCircle2 size={17} /> {toast}</div>}
     </main>
   )
 }

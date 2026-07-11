@@ -387,7 +387,7 @@ function App() {
                       <td>{formatCurrency(investment.amount)}</td>
                       <td>{investment.date}</td>
                       <td>{daysHeld(investment.date)} 天</td>
-                      <td>{(() => { const lockup = lockupStatus(investment.date, investment.lockupDays); return lockup.state === 'none' ? <span className="lockup-badge lockup-badge--none">未设置</span> : lockup.state === 'unlocked' ? <span className="lockup-badge lockup-badge--done">已解锁</span> : <span className="lockup-badge lockup-badge--active">剩 {lockup.daysRemaining} 天</span> })()}</td>
+                      <td>{(() => { const lockup = lockupStatus(investment.date, investment.lockupDays); return lockup.state === 'none' ? <span className="lockup-badge lockup-badge--none">未设置</span> : lockup.state === 'unlocked' ? <span className="lockup-badge lockup-badge--done"><b>已解锁</b><small>{lockup.unlockDate}</small></span> : <span className="lockup-badge lockup-badge--active"><b>剩 {lockup.daysRemaining} 天</b><small>解锁 {lockup.unlockDate}</small></span> })()}</td>
                       <td className={isPositive ? 'positive' : 'negative'}>{formatCurrency(investment.profit, true)}</td>
                       <td className={isPositive ? 'positive' : 'negative'}>{formatPercent(returnRate(investment))}</td>
                       <td className={annualizedRate(investment) >= 0 ? 'positive' : 'negative'}>{formatPercent(annualizedRate(investment))}</td>

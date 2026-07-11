@@ -92,28 +92,29 @@ function downloadFile(filename: string, contents: string, type: string) {
   URL.revokeObjectURL(url)
 }
 
-function parseCsvLine(line: string) {
-  const cells: string[] = []
+function parseCsvRecords(text: string) {
+  const rows: string[][] = []
+  let row: string[] = []
   let cell = ''
   let quoted = false
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index]
-    if (character === '"' && line[index + 1] === '"') { cell += '"'; index += 1 }
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    if (character === '"' && text[index + 1] === '"') { cell += '"'; index += 1 }
     else if (character === '"') quoted = !quoted
-    else if (character === ',' && !quoted) { cells.push(cell.trim()); cell = '' }
-    else cell += character
+    else if (character === ',' && !quoted) { row.push(cell.trim()); cell = '' }
+    else if (character === '\n' && !quoted) { row.push(cell.trim()); rows.push(row); row = []; cell = '' }
+    else if (character !== '\r' || quoted) cell += character
   }
-  cells.push(cell.trim())
-  return cells
+  if (cell || row.length) { row.push(cell.trim()); rows.push(row) }
+  return rows.filter((currentRow) => currentRow.some((value) => value.length > 0))
 }
 
 function parseCsvImport(text: string): Investment[] {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim())
-  if (lines.length < 2) return []
-  const headers = parseCsvLine(lines[0])
+  const rows = parseCsvRecords(text.replace(/^\uFEFF/, ''))
+  if (rows.length < 2) return []
+  const headers = rows[0]
   const indexOf = (header: string) => headers.indexOf(header)
-  return lines.slice(1).map((line) => {
-    const cells = parseCsvLine(line)
+  return rows.slice(1).map((cells) => {
     const amount = Number(cells[indexOf('购入金额')] ?? 0)
     const profit = Number(cells[indexOf('当前暂时盈利')] ?? 0)
     const lockupValue = Number(cells[indexOf('封闭期（天）')] ?? 0)

@@ -317,7 +317,8 @@ function App() {
         .map((item) => ({ ...item, id: typeof item.id === 'string' ? item.id : crypto.randomUUID(), amount: Number(item.amount), profit: Number(item.profit), lockupDays: item.lockupDays ? Number(item.lockupDays) : undefined }))
       if (!cleaned.length) throw new Error('empty')
       setInvestments(cleaned)
-      setToast(`已导入 ${cleaned.length} 条记录`)
+      const skipped = parsed.length - cleaned.length
+      setToast(skipped ? `已导入 ${cleaned.length} 条记录，跳过 ${skipped} 条无效数据` : `已导入 ${cleaned.length} 条记录`)
     } catch {
       setToast('导入失败：请选择有效的导出 JSON 或 CSV 文件')
     } finally {

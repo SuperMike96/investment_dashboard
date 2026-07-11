@@ -121,6 +121,15 @@ function parseCsvImport(text: string): Investment[] {
   }).filter((item) => item.name && item.amount > 0 && item.date && Number.isFinite(item.profit))
 }
 
+function categoryClass(category?: string) {
+  if (category === '现金管理') return 'category-label--cash'
+  if (category === '固收理财') return 'category-label--fixed'
+  if (category === '基金') return 'category-label--fund'
+  if (category === '股票/ETF') return 'category-label--equity'
+  if (category === '黄金/商品') return 'category-label--commodity'
+  return 'category-label--other'
+}
+
 function makeTrendData(investments: Investment[], range: ChartRange) {
   const now = new Date()
   const earliest = investments.length
@@ -474,7 +483,7 @@ function App() {
                   <tbody>{visibleInvestments.map((investment) => {
                     const isPositive = investment.profit >= 0
                     return <tr key={investment.id}>
-                      <td><strong>{investment.name}</strong><small><span className="category-label">{investment.category || '其他'}</span>{investment.note || '未添加备注'}</small></td>
+                      <td><strong>{investment.name}</strong><small><span className={`category-label ${categoryClass(investment.category)}`}>{investment.category || '其他'}</span>{investment.note || '未添加备注'}</small></td>
                       <td>{privacyMode ? '••••••' : formatCurrency(investment.amount)}</td>
                       <td>{privacyMode ? '••••••' : formatCurrency(investment.amount + investment.profit)}</td>
                       <td>{investment.date}</td>

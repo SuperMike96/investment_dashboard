@@ -316,7 +316,7 @@ function App() {
       setInvestments(cleaned)
       setToast(`已导入 ${cleaned.length} 条记录`)
     } catch {
-      setToast('导入失败：请选择有效的导出 JSON 文件')
+      setToast('导入失败：请选择有效的导出 JSON 或 CSV 文件')
     } finally {
       event.target.value = ''
     }

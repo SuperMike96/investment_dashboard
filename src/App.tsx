@@ -394,12 +394,13 @@ function App() {
             {visibleInvestments.length ? (
               <div className="records-table-wrap">
                 <table className="records-table">
-                  <thead><tr><th>理财名称</th><th>购入金额</th><th>购入日期</th><th>持有</th><th>封闭期</th><th>当前收益</th><th>收益率</th><th>年化收益</th><th aria-label="操作" /></tr></thead>
+                  <thead><tr><th>理财名称</th><th>购入金额</th><th>当前价值</th><th>购入日期</th><th>持有</th><th>封闭期</th><th>当前收益</th><th>收益率</th><th>年化收益</th><th aria-label="操作" /></tr></thead>
                   <tbody>{visibleInvestments.map((investment) => {
                     const isPositive = investment.profit >= 0
                     return <tr key={investment.id}>
                       <td><strong>{investment.name}</strong><small>{investment.note || '未添加备注'}</small></td>
                       <td>{privacyMode ? '••••••' : formatCurrency(investment.amount)}</td>
+                      <td>{privacyMode ? '••••••' : formatCurrency(investment.amount + investment.profit)}</td>
                       <td>{investment.date}</td>
                       <td>{daysHeld(investment.date)} 天</td>
                       <td>{(() => { const lockup = lockupStatus(investment.date, investment.lockupDays); return lockup.state === 'none' ? <span className="lockup-badge lockup-badge--none">未设置</span> : lockup.state === 'unlocked' ? <span className="lockup-badge lockup-badge--done"><b>已解锁</b><small>{lockup.unlockDate}</small></span> : <span className="lockup-badge lockup-badge--active"><b>剩 {lockup.daysRemaining} 天</b><small>解锁 {lockup.unlockDate}</small></span> })()}</td>

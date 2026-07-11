@@ -199,6 +199,7 @@ function App() {
         return filter === 'profit' ? investment.profit >= 0 : investment.profit < 0
       })
       .sort((a, b) => {
+        if (sortKey === 'value') return (b.amount + b.profit) - (a.amount + a.profit)
         if (sortKey === 'return') return returnRate(b) - returnRate(a)
         if (sortKey === 'annualized') return annualizedRate(b) - annualizedRate(a)
         return new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -430,7 +431,7 @@ function App() {
               <div className="filter-group">
                 {(['all', 'profit', 'loss', 'locked'] as FilterKey[]).map((key) => <button key={key} className={filter === key ? 'selected' : ''} onClick={() => setFilter(key)}>{key === 'all' ? '全部' : key === 'profit' ? '盈利' : key === 'loss' ? '亏损' : '封闭中'}</button>)}
               </div>
-              <label className="sort-select">排序：<select value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}><option value="date">购入日期</option><option value="return">收益率</option><option value="annualized">年化收益率</option></select></label>
+              <label className="sort-select">排序：<select value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}><option value="date">购入日期</option><option value="value">当前价值</option><option value="return">收益率</option><option value="annualized">年化收益率</option></select></label>
             </div>
             {visibleInvestments.length ? (
               <div className="records-table-wrap">

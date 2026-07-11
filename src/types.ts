@@ -8,7 +8,7 @@ export interface Investment {
   note?: string
 }
 
-export type SortKey = 'date' | 'return' | 'annualized'
+export type SortKey = 'date' | 'value' | 'return' | 'annualized'
 export type FilterKey = 'all' | 'profit' | 'loss' | 'locked'
 
 export interface PortfolioMetrics {

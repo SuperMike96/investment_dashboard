@@ -226,6 +226,11 @@ function App() {
     setToast('所有记录已清空')
   }
 
+  const restoreExamples = () => {
+    setInvestments(exampleInvestments)
+    setToast('示例数据已加载')
+  }
+
   const exportData = (type: 'json' | 'csv') => {
     if (type === 'json') {
       downloadFile(`wealth-yield-${todayISO()}.json`, JSON.stringify(investments, null, 2), 'application/json')
@@ -405,7 +410,7 @@ function App() {
                 </table>
               </div>
             ) : (
-              <div className="empty-state"><LoaderCircle size={28} /><h3>还没有符合条件的理财记录</h3><p>从左侧添加一笔投资，开始追踪收益表现。</p></div>
+              <div className="empty-state"><LoaderCircle size={28} /><h3>还没有符合条件的理财记录</h3><p>从左侧添加一笔投资，开始追踪收益表现。</p><button className="soft-button empty-state__button" onClick={restoreExamples}><Sparkles size={15} /> 加载示例数据</button></div>
             )}
           </article>
         </section>

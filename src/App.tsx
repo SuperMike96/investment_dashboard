@@ -240,6 +240,7 @@ function App() {
     if (!form.name.trim()) return setFormError('请为这笔理财填写一个名称。')
     if (!Number.isFinite(amount) || amount <= 0) return setFormError('购入金额必须大于 0。')
     if (!Number.isFinite(profit)) return setFormError('请输入有效的当前暂时盈利金额。')
+    if (profit < -amount) return setFormError('当前盈利不能让这笔理财的当前价值变成负数。')
     if (form.lockupDays !== undefined && (!Number.isInteger(Number(form.lockupDays)) || Number(form.lockupDays) <= 0)) return setFormError('封闭期必须是大于 0 的整数天数，或留空。')
     if (!form.date || Number.isNaN(recordDate.getTime()) || recordDate > today) return setFormError('购入日期必须是今天或更早的有效日期。')
 

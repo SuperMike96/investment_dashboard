@@ -284,6 +284,12 @@ function App() {
     setToast('示例数据已加载')
   }
 
+  const clearFilters = () => {
+    setFilter('all')
+    setCategoryFilter('all')
+    setToast('筛选条件已清除')
+  }
+
   const exportData = (type: 'json' | 'csv') => {
     if (type === 'json') {
       downloadFile(`wealth-yield-${todayISO()}.json`, JSON.stringify(investments, null, 2), 'application/json')
@@ -322,6 +328,7 @@ function App() {
   const chartEndValue = trendData[trendData.length - 1]?.value ?? 0
   const chartChange = chartStartValue ? (chartEndValue - chartStartValue) / chartStartValue : 0
   const currentValue = metrics.totalAmount + metrics.totalProfit
+  const hasActiveFilter = filter !== 'all' || categoryFilter !== 'all'
   const profitableCount = investments.filter((investment) => investment.profit >= 0).length
   const lockedCount = investments.filter((investment) => lockupStatus(investment.date, investment.lockupDays).state === 'active').length
   const largestShare = metrics.totalAmount ? Math.max(...investments.map((investment) => investment.amount)) / metrics.totalAmount : 0
@@ -478,7 +485,7 @@ function App() {
                 </table>
               </div>
             ) : (
-              <div className="empty-state"><LoaderCircle size={28} /><h3>还没有符合条件的理财记录</h3><p>从左侧添加一笔投资，开始追踪收益表现。</p><button className="soft-button empty-state__button" onClick={restoreExamples}><Sparkles size={15} /> 加载示例数据</button></div>
+              <div className="empty-state"><LoaderCircle size={28} /><h3>{hasActiveFilter ? '没有符合当前筛选的记录' : '还没有理财记录'}</h3><p>{hasActiveFilter ? '调整筛选条件，或清除筛选查看全部持仓。' : '从左侧添加一笔投资，开始追踪收益表现。'}</p><button className="soft-button empty-state__button" onClick={hasActiveFilter ? clearFilters : restoreExamples}>{hasActiveFilter ? <RotateCcw size={15} /> : <Sparkles size={15} />} {hasActiveFilter ? '清除筛选' : '加载示例数据'}</button></div>
             )}
           </article>
         </section>

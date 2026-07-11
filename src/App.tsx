@@ -80,6 +80,35 @@ function downloadFile(filename: string, contents: string, type: string) {
   URL.revokeObjectURL(url)
 }
 
+function parseCsvLine(line: string) {
+  const cells: string[] = []
+  let cell = ''
+  let quoted = false
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index]
+    if (character === '"' && line[index + 1] === '"') { cell += '"'; index += 1 }
+    else if (character === '"') quoted = !quoted
+    else if (character === ',' && !quoted) { cells.push(cell.trim()); cell = '' }
+    else cell += character
+  }
+  cells.push(cell.trim())
+  return cells
+}
+
+function parseCsvImport(text: string): Investment[] {
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim())
+  if (lines.length < 2) return []
+  const headers = parseCsvLine(lines[0])
+  const indexOf = (header: string) => headers.indexOf(header)
+  return lines.slice(1).map((line) => {
+    const cells = parseCsvLine(line)
+    const amount = Number(cells[indexOf('购入金额')] ?? 0)
+    const profit = Number(cells[indexOf('当前暂时盈利')] ?? 0)
+    const lockupValue = Number(cells[indexOf('封闭期（天）')] ?? 0)
+    return { id: crypto.randomUUID(), name: cells[indexOf('名称')] ?? '', amount, date: cells[indexOf('购入日期')] ?? '', profit, lockupDays: lockupValue > 0 ? lockupValue : undefined, note: cells[indexOf('备注')] ?? '' }
+  }).filter((item) => item.name && item.amount > 0 && item.date && Number.isFinite(item.profit))
+}
+
 function makeTrendData(investments: Investment[], range: ChartRange) {
   const now = new Date()
   const earliest = investments.length
@@ -253,7 +282,8 @@ function App() {
     const file = event.target.files?.[0]
     if (!file) return
     try {
-      const parsed = JSON.parse(await file.text())
+      const contents = await file.text()
+      const parsed = file.name.toLowerCase().endsWith('.csv') ? parseCsvImport(contents) : JSON.parse(contents)
       if (!Array.isArray(parsed)) throw new Error('invalid')
       const cleaned = parsed
         .filter((item): item is Investment => item && typeof item.name === 'string' && Number(item.amount) > 0 && typeof item.date === 'string' && Number.isFinite(Number(item.profit)))
@@ -390,10 +420,10 @@ function App() {
             <div className="records-header">
               <div><span className="eyebrow">POSITIONS</span><h2>理财持仓明细 <b>{investments.length}</b></h2></div>
               <div className="records-actions">
-                <button className="icon-button" title="导入 JSON" onClick={() => importRef.current?.click()}><FileUp size={17} /></button>
+                <button className="icon-button" title="导入 JSON 或 CSV" onClick={() => importRef.current?.click()}><FileUp size={17} /></button>
                 <button className="icon-button" title="导出 CSV" onClick={() => exportData('csv')}><Download size={17} /></button>
                 <button className="icon-button danger-button" title="清空所有记录" onClick={resetAll}><RotateCcw size={17} /></button>
-                <input ref={importRef} className="hidden" type="file" accept="application/json,.json" onChange={importData} />
+                <input ref={importRef} className="hidden" type="file" accept="application/json,.json,text/csv,.csv" onChange={importData} />
               </div>
             </div>
             <div className="controls-row">

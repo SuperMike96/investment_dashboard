@@ -164,7 +164,11 @@ function App() {
   const trendData = useMemo(() => makeTrendData(investments, chartRange), [chartRange, investments])
   const visibleInvestments = useMemo(() => {
     return [...investments]
-      .filter((investment) => filter === 'all' || (filter === 'profit' ? investment.profit >= 0 : investment.profit < 0))
+      .filter((investment) => {
+        if (filter === 'all') return true
+        if (filter === 'locked') return lockupStatus(investment.date, investment.lockupDays).state === 'active'
+        return filter === 'profit' ? investment.profit >= 0 : investment.profit < 0
+      })
       .sort((a, b) => {
         if (sortKey === 'return') return returnRate(b) - returnRate(a)
         if (sortKey === 'annualized') return annualizedRate(b) - annualizedRate(a)
@@ -392,7 +396,7 @@ function App() {
             </div>
             <div className="controls-row">
               <div className="filter-group">
-                {(['all', 'profit', 'loss'] as FilterKey[]).map((key) => <button key={key} className={filter === key ? 'selected' : ''} onClick={() => setFilter(key)}>{key === 'all' ? '全部' : key === 'profit' ? '盈利' : '亏损'}</button>)}
+                {(['all', 'profit', 'loss', 'locked'] as FilterKey[]).map((key) => <button key={key} className={filter === key ? 'selected' : ''} onClick={() => setFilter(key)}>{key === 'all' ? '全部' : key === 'profit' ? '盈利' : key === 'loss' ? '亏损' : '封闭中'}</button>)}
               </div>
               <label className="sort-select">排序：<select value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}><option value="date">购入日期</option><option value="return">收益率</option><option value="annualized">年化收益率</option></select></label>
             </div>

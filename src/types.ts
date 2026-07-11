@@ -9,7 +9,7 @@ export interface Investment {
 }
 
 export type SortKey = 'date' | 'return' | 'annualized'
-export type FilterKey = 'all' | 'profit' | 'loss'
+export type FilterKey = 'all' | 'profit' | 'loss' | 'locked'
 
 export interface PortfolioMetrics {
   totalAmount: number

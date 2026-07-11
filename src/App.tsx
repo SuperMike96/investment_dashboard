@@ -456,7 +456,7 @@ function App() {
               <label>当前暂时盈利（元）<input value={form.profit || ''} type="number" step="0.01" placeholder="可填写负数，如 -200" onChange={(event) => setForm({ ...form, profit: Number(event.target.value) })} /></label>
               {Number(form.amount) > 0 && <div className="form-preview"><div><span>录入后当前价值</span><strong>{formatCurrency(formCurrentValue)}</strong></div><div><span>收益率</span><strong className={formReturn >= 0 ? 'positive' : 'negative'}>{formatPercent(formReturn)}</strong></div></div>}
               <label>备注 <span>（选填）</span><textarea value={form.note} maxLength={100} placeholder="如：产品期限、风险等级等" rows={2} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label>
-              {formError && <p className="form-error">{formError}</p>}
+              {formError && <p className="form-error" role="alert">{formError}</p>}
               <button type="submit" className="primary-button form-submit">{editingId ? <CheckCircle2 size={18} /> : <Plus size={18} />}{editingId ? '保存修改' : '添加记录'}</button>
               <button type="button" onClick={cancelEdit} className="clear-form">{editingId ? '放弃修改' : '清空表单'}</button>
             </form>

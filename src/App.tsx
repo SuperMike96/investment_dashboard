@@ -476,6 +476,7 @@ function App() {
               </div>
               <div className="select-controls"><label className="sort-select">类型：<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">全部类型</option>{CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><label className="sort-select">排序：<select value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}><option value="date">购入日期</option><option value="value">当前价值</option><option value="return">收益率</option><option value="annualized">年化收益率</option></select></label></div>
             </div>
+            <p className="mobile-table-hint">左右滑动查看完整明细</p>
             {visibleInvestments.length ? (
               <div className="records-table-wrap">
                 <table className="records-table">

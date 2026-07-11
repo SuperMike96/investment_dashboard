@@ -311,6 +311,11 @@ function App() {
   const lockedCount = investments.filter((investment) => lockupStatus(investment.date, investment.lockupDays).state === 'active').length
   const largestShare = metrics.totalAmount ? Math.max(...investments.map((investment) => investment.amount)) / metrics.totalAmount : 0
   const formLockup = lockupStatus(form.date, form.lockupDays)
+  const categoryTotals = Object.entries(investments.reduce<Record<string, number>>((totals, investment) => {
+    const category = investment.category || '其他'
+    totals[category] = (totals[category] || 0) + investment.amount
+    return totals
+  }, {})).sort(([, amountA], [, amountB]) => amountB - amountA)
   const portfolioSummary = investments.length
     ? `${metrics.totalProfit >= 0 ? '当前组合处于盈利状态' : '当前组合处于回撤状态'} · ${investments.length} 笔持仓 · 平均持有 ${Math.round(metrics.averageDays)} 天`
     : '还没有持仓记录，添加第一笔理财开始追踪。'
@@ -395,6 +400,7 @@ function App() {
               <div><span>最大单笔占比</span><strong>{privacyMode ? '••••' : `${(largestShare * 100).toFixed(1)}%`}</strong></div>
             </div>
             <div className="concentration-bar"><i style={{ width: `${Math.min(100, largestShare * 100)}%` }} /></div><small className="concentration-note">最大单笔投入占总投入比例</small>
+            <div className="allocation-list"><span className="allocation-title">资产类型分布</span>{categoryTotals.slice(0, 3).map(([category, amount]) => <div className="allocation-row" key={category}><span><i className="allocation-dot" />{category}</span><strong>{privacyMode ? '••••' : `${((amount / Math.max(1, metrics.totalAmount)) * 100).toFixed(1)}%`}</strong></div>)}</div>
           </article>
         </section>
 

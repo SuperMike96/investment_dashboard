@@ -36,7 +36,8 @@ export function totalRedeemed(investment: Investment) {
 
 /** Remaining holding value = original principal - redeemed cash + current floating profit. */
 export function currentValue(investment: Investment) {
-  return investment.amount - totalRedeemed(investment) + investment.profit
+  const value = investment.amount - totalRedeemed(investment) + investment.profit
+  return Math.abs(value) < 0.005 ? 0 : value
 }
 
 export function returnRate(investment: Investment) {

@@ -259,7 +259,7 @@ function App() {
     const redemptions = form.redemptions ?? []
     const redeemedTotal = redemptions.reduce((sum, redemption) => sum + redemption.amount, 0)
     if (redemptions.some((redemption) => !redemption.date || redemption.amount <= 0 || new Date(`${redemption.date}T23:59:59`) > today || new Date(`${redemption.date}T00:00:00`) < recordDate)) return setFormError('赎回日期必须在购入日之后且不晚于今天，金额必须大于 0。')
-    if (amount - redeemedTotal + profit < 0) return setFormError('当前盈利和赎回金额不能让剩余持有价值变成负数。')
+    if (amount - redeemedTotal + profit < -0.005) return setFormError('当前盈利和赎回金额不能让剩余持有价值变成负数。')
     if (form.lockupDays !== undefined && (!Number.isInteger(Number(form.lockupDays)) || Number(form.lockupDays) <= 0)) return setFormError('封闭期必须是大于 0 的整数天数，或留空。')
     if (!form.date || Number.isNaN(recordDate.getTime()) || recordDate > today) return setFormError('购入日期必须是今天或更早的有效日期。')
 
@@ -392,7 +392,8 @@ function App() {
   const formLockup = lockupStatus(form.date, form.lockupDays)
   const formReturn = Number(form.amount) > 0 ? Number(form.profit) / Number(form.amount) : 0
   const formTotalRedeemed = (form.redemptions ?? []).reduce((sum, redemption) => sum + redemption.amount, 0)
-  const formCurrentValue = Number(form.amount) - formTotalRedeemed + Number(form.profit)
+  const rawFormCurrentValue = Number(form.amount) - formTotalRedeemed + Number(form.profit)
+  const formCurrentValue = Math.abs(rawFormCurrentValue) < 0.005 ? 0 : rawFormCurrentValue
   const categoryTotals = Object.entries(investments.reduce<Record<string, number>>((totals, investment) => {
     const category = investment.category || '其他'
     totals[category] = (totals[category] || 0) + investment.amount

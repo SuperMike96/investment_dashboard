@@ -30,11 +30,29 @@ export function lockupStatus(dateString: string, lockupDays?: number, today = ne
   return { state: daysRemaining > 0 ? 'active' as const : 'unlocked' as const, daysRemaining: Math.max(0, daysRemaining), unlockDate: unlock }
 }
 
+export function totalRedeemed(investment: Investment) {
+  return (investment.redemptions ?? []).reduce((sum, redemption) => sum + redemption.amount, 0)
+}
+
+/** Remaining holding value = original principal - redeemed cash + current floating profit. */
+export function currentValue(investment: Investment) {
+  return investment.amount - totalRedeemed(investment) + investment.profit
+}
+
 export function returnRate(investment: Investment) {
   return investment.amount > 0 ? investment.profit / investment.amount : 0
 }
 
 export function annualizedRate(investment: Investment, today = new Date()) {
+  if (investment.redemptions?.length) {
+    const redemptionFlows = investment.redemptions.map((redemption) => ({ amount: redemption.amount, date: new Date(`${redemption.date}T00:00:00`) }))
+    const irregularRate = xirr([
+      { amount: -investment.amount, date: new Date(`${investment.date}T00:00:00`) },
+      ...redemptionFlows,
+      { amount: currentValue(investment), date: today },
+    ])
+    if (irregularRate !== null) return irregularRate
+  }
   const growth = 1 + returnRate(investment)
   if (growth <= 0) return -1
   return Math.pow(growth, 365 / daysHeld(investment.date, today)) - 1
@@ -88,10 +106,12 @@ export function portfolioMetrics(investments: Investment[], today = new Date()):
   const averageDays = totalAmount
     ? investments.reduce((sum, investment) => sum + daysHeld(investment.date, today) * investment.amount, 0) / totalAmount
     : 0
-  const terminalValue = totalAmount + totalProfit
   const flows: CashFlow[] = [
-    ...investments.map((investment) => ({ amount: -investment.amount, date: new Date(`${investment.date}T00:00:00`) })),
-    { amount: terminalValue, date: today },
+    ...investments.flatMap((investment) => [
+      { amount: -investment.amount, date: new Date(`${investment.date}T00:00:00`) },
+      ...(investment.redemptions ?? []).map((redemption) => ({ amount: redemption.amount, date: new Date(`${redemption.date}T00:00:00`) })),
+      { amount: currentValue(investment), date: today },
+    ]),
   ]
   const xirrValue = xirr(flows)
   const weighted = totalAmount

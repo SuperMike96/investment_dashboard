@@ -1,7 +1,22 @@
 export interface Redemption {
   id: string
   date: string
+  /** Cash received from the redemption. */
   amount: number
+  /** Principal released by this redemption. */
+  principal?: number
+}
+
+export interface ClosedInvestment {
+  id: string
+  sourceInvestmentId: string
+  sourceName: string
+  category?: string
+  purchaseDate: string
+  redemptionDate: string
+  principal: number
+  amount: number
+  profit: number
 }
 
 export interface Investment {

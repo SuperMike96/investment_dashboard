@@ -1,6 +1,7 @@
-import type { Investment, PortfolioMetrics } from '../types'
+import type { ClosedInvestment, Investment, PortfolioMetrics, Redemption } from '../types'
 
 const DAY = 1000 * 60 * 60 * 24
+const MONEY_EPSILON = 0.005
 
 export function todayISO(date = new Date()) {
   const timezoneOffset = date.getTimezoneOffset() * 60_000
@@ -34,14 +35,65 @@ export function totalRedeemed(investment: Investment) {
   return (investment.redemptions ?? []).reduce((sum, redemption) => sum + redemption.amount, 0)
 }
 
-/** Remaining holding value = original principal - redeemed cash + current floating profit. */
-export function currentValue(investment: Investment) {
-  const value = investment.amount - totalRedeemed(investment) + investment.profit
-  return Math.abs(value) < 0.005 ? 0 : value
+/** Falls back to the redemption cash amount for legacy records without a principal split. */
+export function redeemedPrincipal(redemption: Redemption) {
+  return redemption.principal ?? redemption.amount
 }
 
+export function totalRedeemedPrincipal(investment: Investment) {
+  return (investment.redemptions ?? []).reduce((sum, redemption) => sum + redeemedPrincipal(redemption), 0)
+}
+
+export function remainingPrincipal(investment: Investment) {
+  const value = investment.amount - totalRedeemedPrincipal(investment)
+  return Math.abs(value) < MONEY_EPSILON ? 0 : value
+}
+
+export function realizedProfit(investment: Investment) {
+  return (investment.redemptions ?? []).reduce((sum, redemption) => sum + redemption.amount - redeemedPrincipal(redemption), 0)
+}
+
+/** Current holding value = remaining principal + the remaining position's floating profit. */
+export function currentValue(investment: Investment) {
+  const value = remainingPrincipal(investment) + investment.profit
+  return Math.abs(value) < MONEY_EPSILON ? 0 : value
+}
+
+/** Return rate for the still-held portion only. */
 export function returnRate(investment: Investment) {
-  return investment.amount > 0 ? investment.profit / investment.amount : 0
+  const principal = remainingPrincipal(investment)
+  return principal > 0 ? investment.profit / principal : 0
+}
+
+export function redemptionReturnRate(redemption: Redemption) {
+  const principal = redeemedPrincipal(redemption)
+  return principal > 0 ? (redemption.amount - principal) / principal : 0
+}
+
+export function redemptionAnnualizedRate(investment: Investment, redemption: Redemption) {
+  const principal = redeemedPrincipal(redemption)
+  const growth = principal > 0 ? redemption.amount / principal : 0
+  if (growth <= 0) return -1
+  return Math.pow(growth, 365 / daysHeld(investment.date, new Date(`${redemption.date}T00:00:00`))) - 1
+}
+
+export function closedInvestments(investments: Investment[]): ClosedInvestment[] {
+  return investments
+    .flatMap((investment) => (investment.redemptions ?? []).map((redemption) => {
+      const principal = redeemedPrincipal(redemption)
+      return {
+        id: redemption.id,
+        sourceInvestmentId: investment.id,
+        sourceName: investment.name,
+        category: investment.category,
+        purchaseDate: investment.date,
+        redemptionDate: redemption.date,
+        principal,
+        amount: redemption.amount,
+        profit: redemption.amount - principal,
+      }
+    }))
+    .sort((a, b) => new Date(b.redemptionDate).getTime() - new Date(a.redemptionDate).getTime())
 }
 
 export function annualizedRate(investment: Investment, today = new Date()) {
@@ -102,7 +154,7 @@ export function xirr(cashflows: CashFlow[]) {
 
 export function portfolioMetrics(investments: Investment[], today = new Date()): PortfolioMetrics {
   const totalAmount = investments.reduce((sum, investment) => sum + investment.amount, 0)
-  const totalProfit = investments.reduce((sum, investment) => sum + investment.profit, 0)
+  const totalProfit = investments.reduce((sum, investment) => sum + investment.profit + realizedProfit(investment), 0)
   const returnRateValue = totalAmount ? totalProfit / totalAmount : 0
   const averageDays = totalAmount
     ? investments.reduce((sum, investment) => sum + daysHeld(investment.date, today) * investment.amount, 0) / totalAmount

@@ -35,13 +35,19 @@ import { exampleInvestments } from './data'
 import type { FilterKey, Investment, Redemption, SortKey } from './types'
 import {
   annualizedRate,
+  closedInvestments,
   currentValue as investmentCurrentValue,
   daysHeld,
   formatCurrency,
   formatPercent,
   portfolioMetrics,
+  realizedProfit,
+  redeemedPrincipal,
+  redemptionAnnualizedRate,
+  remainingPrincipal,
   returnRate,
   totalRedeemed,
+  totalRedeemedPrincipal,
   lockupStatus,
   todayISO,
 } from './utils/finance'
@@ -69,7 +75,7 @@ function loadInvestments(): Investment[] {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (!stored) return exampleInvestments
     const parsed = JSON.parse(stored)
-    return Array.isArray(parsed) ? parsed : exampleInvestments
+    return Array.isArray(parsed) ? parsed.map(normalizeInvestment) : exampleInvestments
   } catch {
     return exampleInvestments
   }
@@ -89,7 +95,39 @@ function normalizeRedemptions(value: unknown): Redemption[] {
   if (!Array.isArray(value)) return []
   return value
     .filter((item): item is Redemption => Boolean(item && typeof item.date === 'string' && Number(item.amount) > 0))
-    .map((item) => ({ id: typeof item.id === 'string' ? item.id : crypto.randomUUID(), date: item.date, amount: Number(item.amount) }))
+    .map((item) => {
+      const principal = Number(item.principal)
+      return {
+        id: typeof item.id === 'string' ? item.id : crypto.randomUUID(),
+        date: item.date,
+        amount: Number(item.amount),
+        principal: Number.isFinite(principal) && principal > 0 ? principal : undefined,
+      }
+    })
+}
+
+/** Upgrades legacy full-redemption records without changing their cash-flow result. */
+function normalizeInvestment(value: Investment): Investment {
+  const amount = Number(value.amount)
+  const profit = Number(value.profit)
+  const redemptions = normalizeRedemptions(value.redemptions)
+  const onlyRedemption = redemptions.length === 1 ? redemptions[0] : undefined
+  const isLegacyFullRedemption = Boolean(
+    onlyRedemption
+      && onlyRedemption.principal === undefined
+      && Math.abs(onlyRedemption.amount - (amount + profit)) < 0.005,
+  )
+
+  return {
+    ...value,
+    id: typeof value.id === 'string' ? value.id : crypto.randomUUID(),
+    amount,
+    profit: isLegacyFullRedemption ? 0 : profit,
+    lockupDays: value.lockupDays ? Number(value.lockupDays) : undefined,
+    redemptions: redemptions.length
+      ? redemptions.map((redemption) => isLegacyFullRedemption && redemption.id === onlyRedemption?.id ? { ...redemption, principal: amount } : redemption)
+      : undefined,
+  }
 }
 
 function downloadFile(filename: string, contents: string, type: string) {
@@ -124,13 +162,17 @@ function parseCsvImport(text: string): Investment[] {
   if (rows.length < 2) return []
   const headers = rows[0]
   const indexOf = (header: string) => headers.indexOf(header)
+  const cellFor = (cells: string[], ...headersToTry: string[]) => {
+    const index = headersToTry.map(indexOf).find((value) => value >= 0)
+    return index === undefined ? undefined : cells[index]
+  }
   return rows.slice(1).map((cells) => {
     const amount = Number(cells[indexOf('购入金额')] ?? 0)
-    const profit = Number(cells[indexOf('当前暂时盈利')] ?? 0)
+    const profit = Number(cellFor(cells, '剩余部分浮动收益', '当前暂时盈利') ?? 0)
     const lockupValue = Number(cells[indexOf('封闭期（天）')] ?? 0)
     let redemptions: Redemption[] = []
     try { redemptions = normalizeRedemptions(JSON.parse(cells[indexOf('赎回记录(JSON)')] ?? '[]')) } catch { redemptions = [] }
-    return { id: crypto.randomUUID(), name: cells[indexOf('名称')] ?? '', amount, date: cells[indexOf('购入日期')] ?? '', profit, lockupDays: lockupValue > 0 ? lockupValue : undefined, category: cells[indexOf('类型')] ?? '其他', redemptions, note: cells[indexOf('备注')] ?? '' }
+    return normalizeInvestment({ id: crypto.randomUUID(), name: cells[indexOf('名称')] ?? '', amount, date: cells[indexOf('购入日期')] ?? '', profit, lockupDays: lockupValue > 0 ? lockupValue : undefined, category: cells[indexOf('类型')] ?? '其他', redemptions, note: cells[indexOf('备注')] ?? '' })
   }).filter((item) => item.name && item.amount > 0 && item.date && Number.isFinite(item.profit))
 }
 
@@ -159,9 +201,12 @@ function makeTrendData(investments: Investment[], range: ChartRange) {
         const purchaseTime = new Date(`${investment.date}T00:00:00`).getTime()
         if (point.getTime() < purchaseTime) return acc
         const progression = Math.min(1, Math.max(0, (point.getTime() - purchaseTime) / Math.max(1, now.getTime() - purchaseTime)))
-        const redeemedBefore = (investment.redemptions ?? []).reduce((sum, redemption) => sum + (new Date(`${redemption.date}T00:00:00`).getTime() <= point.getTime() ? redemption.amount : 0), 0)
-        acc.invested += investment.amount - redeemedBefore
-        acc.profit += investment.profit * progression
+        const redemptionsBefore = (investment.redemptions ?? []).filter((redemption) => new Date(`${redemption.date}T00:00:00`).getTime() <= point.getTime())
+        const redeemedBefore = redemptionsBefore.reduce((sum, redemption) => sum + redeemedPrincipal(redemption), 0)
+        const realizedBefore = redemptionsBefore.reduce((sum, redemption) => sum + redemption.amount - redeemedPrincipal(redemption), 0)
+        const activePrincipal = Math.max(0, investment.amount - redeemedBefore)
+        acc.invested += activePrincipal
+        acc.profit += realizedBefore + (activePrincipal > 0 ? investment.profit * progression : 0)
         return acc
       },
       { invested: 0, profit: 0 },
@@ -213,6 +258,7 @@ function App() {
   const [toast, setToast] = useState('')
   const [savedAt, setSavedAt] = useState(loadSavedAt)
   const [redemptionDate, setRedemptionDate] = useState(todayISO())
+  const [redemptionPrincipal, setRedemptionPrincipal] = useState(0)
   const [redemptionAmount, setRedemptionAmount] = useState(0)
   const importRef = useRef<HTMLInputElement>(null)
 
@@ -231,8 +277,10 @@ function App() {
 
   const metrics = useMemo(() => portfolioMetrics(investments), [investments])
   const trendData = useMemo(() => makeTrendData(investments, chartRange), [chartRange, investments])
+  const activeInvestments = useMemo(() => investments.filter((investment) => remainingPrincipal(investment) > 0.005), [investments])
+  const endedInvestments = useMemo(() => closedInvestments(investments), [investments])
   const visibleInvestments = useMemo(() => {
-    return [...investments]
+    return [...activeInvestments]
       .filter((investment) => {
         if (categoryFilter !== 'all' && (investment.category || '其他') !== categoryFilter) return false
         if (filter === 'all') return true
@@ -245,7 +293,7 @@ function App() {
         if (sortKey === 'annualized') return annualizedRate(b) - annualizedRate(a)
         return new Date(b.date).getTime() - new Date(a.date).getTime()
       })
-  }, [categoryFilter, filter, investments, sortKey])
+  }, [activeInvestments, categoryFilter, filter, sortKey])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -257,9 +305,9 @@ function App() {
     if (!Number.isFinite(amount) || amount <= 0) return setFormError('购入金额必须大于 0。')
     if (!Number.isFinite(profit)) return setFormError('请输入有效的当前暂时盈利金额。')
     const redemptions = form.redemptions ?? []
-    const redeemedTotal = redemptions.reduce((sum, redemption) => sum + redemption.amount, 0)
-    if (redemptions.some((redemption) => !redemption.date || redemption.amount <= 0 || new Date(`${redemption.date}T23:59:59`) > today || new Date(`${redemption.date}T00:00:00`) < recordDate)) return setFormError('赎回日期必须在购入日之后且不晚于今天，金额必须大于 0。')
-    if (amount - redeemedTotal + profit < -0.005) return setFormError('当前盈利和赎回金额不能让剩余持有价值变成负数。')
+    const redeemedPrincipalTotal = redemptions.reduce((sum, redemption) => sum + redeemedPrincipal(redemption), 0)
+    if (redemptions.some((redemption) => !redemption.date || redemption.amount <= 0 || redeemedPrincipal(redemption) <= 0 || new Date(`${redemption.date}T23:59:59`) > today || new Date(`${redemption.date}T00:00:00`) < recordDate)) return setFormError('赎回日期必须在购入日之后且不晚于今天；赎回本金和到账金额都必须大于 0。')
+    if (redeemedPrincipalTotal - amount > 0.005) return setFormError('累计赎回本金不能超过购入金额。')
     if (form.lockupDays !== undefined && (!Number.isInteger(Number(form.lockupDays)) || Number(form.lockupDays) <= 0)) return setFormError('封闭期必须是大于 0 的整数天数，或留空。')
     if (!form.date || Number.isNaN(recordDate.getTime()) || recordDate > today) return setFormError('购入日期必须是今天或更早的有效日期。')
 
@@ -268,7 +316,7 @@ function App() {
       id: editingId ?? crypto.randomUUID(),
       name: form.name.trim(),
       amount,
-      profit,
+      profit: Math.abs(amount - redeemedPrincipalTotal) < 0.005 ? 0 : profit,
       lockupDays: form.lockupDays ? Number(form.lockupDays) : undefined,
       category: form.category || '其他',
       redemptions: redemptions.length ? redemptions : undefined,
@@ -279,14 +327,17 @@ function App() {
     setForm(createEmptyForm())
     setEditingId(null)
     setRedemptionDate(todayISO())
+    setRedemptionPrincipal(0)
     setRedemptionAmount(0)
     setFormError('')
   }
 
   const startEdit = (investment: Investment) => {
     setEditingId(investment.id)
-    setForm({ name: investment.name, amount: investment.amount, date: investment.date, profit: investment.profit, lockupDays: investment.lockupDays, category: investment.category ?? '其他', redemptions: normalizeRedemptions(investment.redemptions), note: investment.note ?? '' })
+    const normalized = normalizeInvestment(investment)
+    setForm({ name: normalized.name, amount: normalized.amount, date: normalized.date, profit: normalized.profit, lockupDays: normalized.lockupDays, category: normalized.category ?? '其他', redemptions: normalizeRedemptions(normalized.redemptions), note: normalized.note ?? '' })
     setRedemptionDate(todayISO())
+    setRedemptionPrincipal(0)
     setRedemptionAmount(0)
     setFormError('')
     document.getElementById('record-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -296,17 +347,27 @@ function App() {
     setEditingId(null)
     setForm(createEmptyForm())
     setRedemptionDate(todayISO())
+    setRedemptionPrincipal(0)
     setRedemptionAmount(0)
     setFormError('')
   }
 
   const addRedemption = () => {
     const amount = Number(redemptionAmount)
+    const principal = Number(redemptionPrincipal)
     const redemption = new Date(`${redemptionDate}T00:00:00`)
     const purchase = new Date(`${form.date}T00:00:00`)
-    if (!Number.isFinite(amount) || amount <= 0) return setFormError('赎回金额必须大于 0。')
+    if (!Number.isFinite(principal) || principal <= 0) return setFormError('赎回本金必须大于 0。')
+    if (!Number.isFinite(amount) || amount <= 0) return setFormError('赎回到账金额必须大于 0。')
     if (!redemptionDate || Number.isNaN(redemption.getTime()) || redemption < purchase || redemption > new Date(`${todayISO()}T23:59:59`)) return setFormError('赎回日期必须在购入日之后且不晚于今天。')
-    setForm((previous) => ({ ...previous, redemptions: [...(previous.redemptions ?? []), { id: crypto.randomUUID(), date: redemptionDate, amount }] }))
+    const remaining = Number(form.amount) - (form.redemptions ?? []).reduce((sum, item) => sum + redeemedPrincipal(item), 0)
+    if (principal - remaining > 0.005) return setFormError('赎回本金不能超过当前剩余本金。')
+    setForm((previous) => {
+      const nextRedemptions = [...(previous.redemptions ?? []), { id: crypto.randomUUID(), date: redemptionDate, amount, principal }]
+      const nextRemaining = Number(previous.amount) - nextRedemptions.reduce((sum, item) => sum + redeemedPrincipal(item), 0)
+      return { ...previous, redemptions: nextRedemptions, profit: Math.abs(nextRemaining) < 0.005 ? 0 : previous.profit }
+    })
+    setRedemptionPrincipal(0)
     setRedemptionAmount(0)
     setFormError('')
   }
@@ -345,9 +406,9 @@ function App() {
     if (type === 'json') {
       downloadFile(`wealth-yield-${todayISO()}.json`, JSON.stringify(investments, null, 2), 'application/json')
     } else {
-      const header = ['名称', '购入金额', '购入日期', '当前暂时盈利', '封闭期（天）', '类型', '已赎回金额', '赎回记录(JSON)', '备注']
+      const header = ['名称', '购入金额', '购入日期', '剩余部分浮动收益', '封闭期（天）', '类型', '已赎回本金', '已赎回到账金额', '赎回记录(JSON)', '备注']
       const escape = (value: string | number | undefined) => `"${String(value ?? '').replace(/"/g, '""')}"`
-      const rows = investments.map((item) => [item.name, item.amount, item.date, item.profit, item.lockupDays ?? '', item.category ?? '其他', totalRedeemed(item), JSON.stringify(item.redemptions ?? []), item.note].map(escape).join(','))
+      const rows = investments.map((item) => [item.name, item.amount, item.date, item.profit, item.lockupDays ?? '', item.category ?? '其他', totalRedeemedPrincipal(item), totalRedeemed(item), JSON.stringify(item.redemptions ?? []), item.note].map(escape).join(','))
       downloadFile(`wealth-yield-${todayISO()}.csv`, `\uFEFF${header.join(',')}\n${rows.join('\n')}`, 'text/csv;charset=utf-8')
     }
     setToast(`已导出 ${type.toUpperCase()} 文件`)
@@ -367,7 +428,7 @@ function App() {
           const profit = Number(item?.profit)
           return Boolean(item && typeof item.name === 'string' && amount > 0 && Number.isFinite(purchaseDate.getTime()) && purchaseDate <= new Date() && Number.isFinite(profit) && profit >= -amount)
         })
-        .map((item) => ({ ...item, id: typeof item.id === 'string' ? item.id : crypto.randomUUID(), amount: Number(item.amount), profit: Number(item.profit), lockupDays: item.lockupDays ? Number(item.lockupDays) : undefined, redemptions: normalizeRedemptions(item.redemptions) }))
+        .map((item) => normalizeInvestment(item))
       if (!cleaned.length) throw new Error('empty')
       setInvestments(cleaned)
       const skipped = parsed.length - cleaned.length
@@ -384,23 +445,25 @@ function App() {
   const chartStartValue = trendData[0]?.value ?? 0
   const chartEndValue = trendData[trendData.length - 1]?.value ?? 0
   const chartChange = chartStartValue ? (chartEndValue - chartStartValue) / chartStartValue : 0
-  const currentValue = investments.reduce((sum, investment) => sum + investmentCurrentValue(investment), 0)
+  const currentValue = activeInvestments.reduce((sum, investment) => sum + investmentCurrentValue(investment), 0)
   const hasActiveFilter = filter !== 'all' || categoryFilter !== 'all'
-  const profitableCount = investments.filter((investment) => investment.profit >= 0).length
-  const lockedCount = investments.filter((investment) => lockupStatus(investment.date, investment.lockupDays).state === 'active').length
-  const largestShare = metrics.totalAmount ? Math.max(...investments.map((investment) => investment.amount)) / metrics.totalAmount : 0
+  const profitableCount = activeInvestments.filter((investment) => investment.profit >= 0).length
+  const lockedCount = activeInvestments.filter((investment) => lockupStatus(investment.date, investment.lockupDays).state === 'active').length
+  const activePrincipalTotal = activeInvestments.reduce((sum, investment) => sum + remainingPrincipal(investment), 0)
+  const largestShare = activePrincipalTotal ? Math.max(...activeInvestments.map((investment) => remainingPrincipal(investment))) / activePrincipalTotal : 0
   const formLockup = lockupStatus(form.date, form.lockupDays)
-  const formReturn = Number(form.amount) > 0 ? Number(form.profit) / Number(form.amount) : 0
+  const formRemainingPrincipal = Math.max(0, Number(form.amount) - (form.redemptions ?? []).reduce((sum, redemption) => sum + redeemedPrincipal(redemption), 0))
+  const formReturn = formRemainingPrincipal > 0 ? Number(form.profit) / formRemainingPrincipal : 0
   const formTotalRedeemed = (form.redemptions ?? []).reduce((sum, redemption) => sum + redemption.amount, 0)
-  const rawFormCurrentValue = Number(form.amount) - formTotalRedeemed + Number(form.profit)
-  const formCurrentValue = Math.abs(rawFormCurrentValue) < 0.005 ? 0 : rawFormCurrentValue
-  const categoryTotals = Object.entries(investments.reduce<Record<string, number>>((totals, investment) => {
+  const formRealizedProfit = (form.redemptions ?? []).reduce((sum, redemption) => sum + redemption.amount - redeemedPrincipal(redemption), 0)
+  const formCurrentValue = formRemainingPrincipal + Number(form.profit)
+  const categoryTotals = Object.entries(activeInvestments.reduce<Record<string, number>>((totals, investment) => {
     const category = investment.category || '其他'
-    totals[category] = (totals[category] || 0) + investment.amount
+    totals[category] = (totals[category] || 0) + remainingPrincipal(investment)
     return totals
   }, {})).sort(([, amountA], [, amountB]) => amountB - amountA)
-  const portfolioSummary = investments.length
-    ? `${metrics.totalProfit >= 0 ? '当前组合处于盈利状态' : '当前组合处于回撤状态'} · ${investments.length} 笔持仓 · 平均持有 ${Math.round(metrics.averageDays)} 天`
+  const portfolioSummary = activeInvestments.length
+    ? `${metrics.totalProfit >= 0 ? '当前组合处于盈利状态' : '当前组合处于回撤状态'} · ${activeInvestments.length} 笔持有中 · 平均持有 ${Math.round(metrics.averageDays)} 天`
     : '还没有持仓记录，添加第一笔理财开始追踪。'
 
   return (
@@ -438,8 +501,8 @@ function App() {
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="总投入" value={privacyMode ? '••••••' : formatCurrency(metrics.totalAmount)} hint={`${investments.length} 笔理财记录`} icon={<WalletCards size={19} />} tone="violet" />
-          <MetricCard label="当前总收益" value={privacyMode ? '••••••' : formatCurrency(metrics.totalProfit, true)} hint={<span className={profitTone}>{profitIcon} 浮动收益实时汇总</span>} icon={<CircleDollarSign size={19} />} tone="cyan" />
+          <MetricCard label="总投入" value={privacyMode ? '••••••' : formatCurrency(metrics.totalAmount)} hint={`${activeInvestments.length} 笔持有 · ${endedInvestments.length} 笔结束`} icon={<WalletCards size={19} />} tone="violet" />
+          <MetricCard label="累计总收益" value={privacyMode ? '••••••' : formatCurrency(metrics.totalProfit, true)} hint={<span className={profitTone}>{profitIcon} 剩余浮动收益 + 已实现收益</span>} icon={<CircleDollarSign size={19} />} tone="cyan" />
           <MetricCard label="总收益率" value={privacyMode ? '••••' : formatPercent(metrics.returnRate)} hint="累计收益 / 累计投入" icon={<TrendingUp size={19} />} tone="green" />
           <MetricCard label="年化收益率" value={privacyMode ? '••••' : formatPercent(metrics.annualizedRate)} hint={metrics.annualizedMethod === 'xirr' ? 'XIRR · 非定期现金流' : '资金加权估算'} icon={<BarChart3 size={19} />} tone="pink" />
         </section>
@@ -477,13 +540,13 @@ function App() {
             <div className="panel-heading"><div><span className="eyebrow">PORTFOLIO CHECK</span><h2>组合检查</h2></div><div className="orbital-icon"><TrendingUp size={20} /></div></div>
             <div className="inspection-hero"><span>当前估算价值</span><strong>{privacyMode ? '••••••' : formatCurrency(currentValue)}</strong><small className={metrics.totalProfit >= 0 ? 'positive' : 'negative'}>{privacyMode ? '••••' : formatPercent(metrics.returnRate)} 累计回报</small></div>
             <div className="inspection-grid">
-              <div><span>盈利项目</span><strong>{profitableCount} / {investments.length || 0}</strong></div>
+              <div><span>盈利项目</span><strong>{profitableCount} / {activeInvestments.length || 0}</strong></div>
               <div><span>封闭中</span><strong>{lockedCount} 笔</strong></div>
               <div><span>平均持有</span><strong>{Math.round(metrics.averageDays || 0)} 天</strong></div>
               <div><span>最大单笔占比</span><strong>{privacyMode ? '••••' : `${(largestShare * 100).toFixed(1)}%`}</strong></div>
             </div>
-            <div className="concentration-bar"><i style={{ width: `${Math.min(100, largestShare * 100)}%` }} /></div><small className="concentration-note">最大单笔投入占总投入比例</small>
-            <div className="allocation-list"><span className="allocation-title">资产类型分布</span>{categoryTotals.slice(0, 3).map(([category, amount]) => <div className="allocation-row" key={category}><span><i className="allocation-dot" />{category}</span><strong>{privacyMode ? '••••' : `${((amount / Math.max(1, metrics.totalAmount)) * 100).toFixed(1)}%`}</strong></div>)}</div>
+            <div className="concentration-bar"><i style={{ width: `${Math.min(100, largestShare * 100)}%` }} /></div><small className="concentration-note">最大单笔剩余本金占比</small>
+            <div className="allocation-list"><span className="allocation-title">剩余本金按类型分布</span>{categoryTotals.slice(0, 3).map(([category, amount]) => <div className="allocation-row" key={category}><span><i className="allocation-dot" />{category}</span><strong>{privacyMode ? '••••' : `${((amount / Math.max(1, activePrincipalTotal)) * 100).toFixed(1)}%`}</strong></div>)}</div>
           </article>
         </section>
 
@@ -499,20 +562,20 @@ function App() {
               <label>封闭期（天） <span>（选填）</span><input value={form.lockupDays || ''} type="number" min="1" step="1" placeholder="如：180" onChange={(event) => setForm((previous) => ({ ...previous, lockupDays: event.target.value ? Number(event.target.value) : undefined }))} /></label>
               {form.lockupDays && formLockup.unlockDate && <div className="field-hint"><CalendarDays size={13} /> 预计 {formLockup.state === 'unlocked' ? '已解锁' : `解锁于 ${formLockup.unlockDate} · 剩余 ${formLockup.daysRemaining} 天`}</div>}
               <label>理财类型 <span>（选填）</span><select value={form.category || '其他'} onChange={(event) => setForm((previous) => ({ ...previous, category: event.target.value }))}>{CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
-              <label>当前暂时盈利（元）<input value={form.profit || ''} type="number" step="0.01" placeholder="可填写负数，如 -200" onChange={(event) => setForm((previous) => ({ ...previous, profit: Number(event.target.value) }))} /></label>
-              <div className="redemptions-box"><div className="redemptions-heading"><span>部分赎回 <em>（可选）</em></span><small>按现金流记录</small></div>{(form.redemptions ?? []).map((redemption) => <div className="redemption-row" key={redemption.id}><span>{redemption.date}</span><strong>{formatCurrency(redemption.amount)}</strong><button type="button" aria-label={`删除 ${redemption.date} 的赎回记录`} onClick={() => removeRedemption(redemption.id)}><X size={14} /></button></div>)}<div className="redemption-entry"><input aria-label="赎回日期" type="text" inputMode="numeric" placeholder="YYYY-MM-DD" maxLength={10} value={redemptionDate} onChange={(event) => setRedemptionDate(event.target.value)} /><input aria-label="赎回金额" type="number" min="0.01" step="0.01" placeholder="赎回金额" value={redemptionAmount || ''} onChange={(event) => setRedemptionAmount(Number(event.target.value))} /><button type="button" className="icon-button" aria-label="添加赎回记录" onClick={addRedemption}><Plus size={16} /></button></div><small className="redemptions-summary">已赎回 {formatCurrency(formTotalRedeemed)} · 剩余价值 {formatCurrency(formCurrentValue)}</small></div>
-              {Number(form.amount) > 0 && <div className="form-preview"><div><span>录入后当前价值</span><strong>{formatCurrency(formCurrentValue)}</strong></div><div><span>收益率</span><strong className={formReturn >= 0 ? 'positive' : 'negative'}>{formatPercent(formReturn)}</strong></div></div>}
+              <label>剩余部分浮动收益（元）<input value={form.profit || ''} type="number" step="0.01" placeholder="可填写负数，如 -200" onChange={(event) => setForm((previous) => ({ ...previous, profit: Number(event.target.value) }))} /></label>
+              <div className="redemptions-box"><div className="redemptions-heading"><span>赎回记录 <em>（可选）</em></span><small>本金与到账差额计为已实现收益</small></div>{(form.redemptions ?? []).map((redemption) => { const redemptionProfit = redemption.amount - redeemedPrincipal(redemption); return <div className="redemption-row" key={redemption.id}><span>{redemption.date}</span><strong>本金 {formatCurrency(redeemedPrincipal(redemption))} · 到账 {formatCurrency(redemption.amount)}</strong><small className={redemptionProfit >= 0 ? 'positive' : 'negative'}>已实现 {formatCurrency(redemptionProfit, true)}</small><button type="button" aria-label={`删除 ${redemption.date} 的赎回记录`} onClick={() => removeRedemption(redemption.id)}><X size={14} /></button></div>})}<div className="redemption-entry"><input aria-label="赎回日期" type="text" inputMode="numeric" placeholder="YYYY-MM-DD" maxLength={10} value={redemptionDate} onChange={(event) => setRedemptionDate(event.target.value)} /><input aria-label="赎回本金" type="number" min="0.01" step="0.01" placeholder="赎回本金" value={redemptionPrincipal || ''} onChange={(event) => setRedemptionPrincipal(Number(event.target.value))} /><input aria-label="赎回到账金额" type="number" min="0.01" step="0.01" placeholder="赎回到账" value={redemptionAmount || ''} onChange={(event) => setRedemptionAmount(Number(event.target.value))} /><button type="button" className="icon-button" aria-label="添加赎回记录" onClick={addRedemption}><Plus size={16} /></button></div><small className="redemptions-summary">已赎回到账 {formatCurrency(formTotalRedeemed)} · 已实现收益 {formatCurrency(formRealizedProfit, true)} · 剩余本金 {formatCurrency(formRemainingPrincipal)}</small></div>
+              {Number(form.amount) > 0 && <div className="form-preview"><div><span>录入后剩余价值</span><strong>{formatCurrency(formCurrentValue)}</strong></div><div><span>剩余收益率</span><strong className={formReturn >= 0 ? 'positive' : 'negative'}>{formatPercent(formReturn)}</strong></div></div>}
               <label>备注 <span>（选填）</span><textarea value={form.note} maxLength={100} placeholder="如：产品期限、风险等级等" rows={2} onChange={(event) => setForm((previous) => ({ ...previous, note: event.target.value }))} /></label>
               {formError && <p className="form-error" role="alert">{formError}</p>}
               <button type="submit" className="primary-button form-submit">{editingId ? <CheckCircle2 size={18} /> : <Plus size={18} />}{editingId ? '保存修改' : '添加记录'}</button>
               <button type="button" onClick={cancelEdit} className="clear-form">{editingId ? '放弃修改' : '清空表单'}</button>
             </form>
-            <div className="formula-note"><Sparkles size={15} /><span>年化按 XIRR 计算；赎回会作为对应日期的现金流，封闭期只用于追踪解锁时间。</span></div>
+            <div className="formula-note"><Sparkles size={15} /><span>剩余收益率 = 剩余部分浮动收益 ÷ 剩余本金；每笔赎回会单独归入结束理财，并作为 XIRR 现金流。</span></div>
           </article>
 
           <article className="glass-panel records-panel">
             <div className="records-header">
-              <div><span className="eyebrow">POSITIONS</span><h2>理财持仓明细 <b>{filter === 'all' && categoryFilter === 'all' ? investments.length : `${visibleInvestments.length}/${investments.length}`}</b></h2></div>
+              <div><span className="eyebrow">OPEN POSITIONS</span><h2>持有中理财 <b>{filter === 'all' && categoryFilter === 'all' ? activeInvestments.length : `${visibleInvestments.length}/${activeInvestments.length}`}</b></h2></div>
               <div className="records-actions">
                 <button className="icon-button" aria-label="导入 JSON 或 CSV" title="导入 JSON 或 CSV" onClick={() => importRef.current?.click()}><FileUp size={17} /></button>
                 <button className="icon-button" aria-label="导出 CSV" title="导出 CSV" onClick={() => exportData('csv')}><Download size={17} /></button>
@@ -530,20 +593,23 @@ function App() {
             {visibleInvestments.length ? (
               <div className="records-table-wrap">
                 <table className="records-table">
-                  <thead><tr><th>理财名称</th><th>购入金额</th><th>已赎回</th><th>当前价值</th><th>购入日期</th><th>持有</th><th>封闭期</th><th>当前收益</th><th>收益率</th><th>年化收益</th><th aria-label="操作" /></tr></thead>
+                  <thead><tr><th>理财名称</th><th>初始投入</th><th>剩余本金</th><th>已回报</th><th>当前价值</th><th>购入日期</th><th>持有</th><th>封闭期</th><th>浮动收益</th><th>剩余收益率</th><th>年化收益</th><th aria-label="操作" /></tr></thead>
                   <tbody>{visibleInvestments.map((investment) => {
                     const isPositive = investment.profit >= 0
+                    const realized = realizedProfit(investment)
+                    const annualized = annualizedRate(investment)
                     return <tr key={investment.id}>
                       <td><strong>{investment.name}</strong><small><span className={`category-label ${categoryClass(investment.category)}`}>{investment.category || '其他'}</span>{investment.note || '未添加备注'}</small></td>
                       <td>{privacyMode ? '••••••' : formatCurrency(investment.amount)}</td>
-                      <td>{investment.redemptions?.length ? <><span>{privacyMode ? '••••••' : formatCurrency(totalRedeemed(investment))}</span><small>{investment.redemptions.length} 次</small></> : '—'}</td>
+                      <td>{privacyMode ? '••••••' : formatCurrency(remainingPrincipal(investment))}</td>
+                      <td className={realized >= 0 ? 'positive' : 'negative'}>{investment.redemptions?.length ? <><span>{privacyMode ? '••••••' : formatCurrency(realized, true)}</span><small>{investment.redemptions.length} 次赎回</small></> : '—'}</td>
                       <td>{privacyMode ? '••••••' : formatCurrency(investmentCurrentValue(investment))}</td>
                       <td>{investment.date}</td>
                       <td>{daysHeld(investment.date)} 天</td>
                       <td>{(() => { const lockup = lockupStatus(investment.date, investment.lockupDays); return lockup.state === 'none' ? <span className="lockup-badge lockup-badge--none">未设置</span> : lockup.state === 'unlocked' ? <span className="lockup-badge lockup-badge--done"><b>已解锁</b><small>{lockup.unlockDate}</small></span> : <span className="lockup-badge lockup-badge--active"><b>剩 {lockup.daysRemaining} 天</b><small>解锁 {lockup.unlockDate}</small></span> })()}</td>
                       <td className={isPositive ? 'positive' : 'negative'}>{privacyMode ? '••••••' : formatCurrency(investment.profit, true)}</td>
                       <td className={isPositive ? 'positive' : 'negative'}>{privacyMode ? '••••' : formatPercent(returnRate(investment))}</td>
-                      <td className={annualizedRate(investment) >= 0 ? 'positive' : 'negative'}>{privacyMode ? '••••' : formatPercent(annualizedRate(investment))}</td>
+                      <td className={annualized >= 0 ? 'positive' : 'negative'}>{privacyMode ? '••••' : formatPercent(annualized)}</td>
                       <td><div className="row-actions"><button onClick={() => startEdit(investment)} aria-label={`编辑 ${investment.name}`}><Edit3 size={15} /></button><button onClick={() => removeInvestment(investment.id)} aria-label={`删除 ${investment.name}`}><Trash2 size={15} /></button></div></td>
                     </tr>
                   })}</tbody>
@@ -551,6 +617,42 @@ function App() {
               </div>
             ) : (
               <div className="empty-state"><LoaderCircle size={28} /><h3>{hasActiveFilter ? '没有符合当前筛选的记录' : '还没有理财记录'}</h3><p>{hasActiveFilter ? '调整筛选条件，或清除筛选查看全部持仓。' : '从左侧添加一笔投资，开始追踪收益表现。'}</p><button className="soft-button empty-state__button" onClick={hasActiveFilter ? clearFilters : restoreExamples}>{hasActiveFilter ? <RotateCcw size={15} /> : <Sparkles size={15} />} {hasActiveFilter ? '清除筛选' : '加载示例数据'}</button></div>
+            )}
+          </article>
+        </section>
+
+        <section className="mt-5">
+          <article className="glass-panel records-panel closed-records-panel">
+            <div className="records-header">
+              <div><span className="eyebrow">CLOSED POSITIONS</span><h2>结束理财 <b>{endedInvestments.length}</b></h2></div>
+            </div>
+            <p className="ended-list-note">每一次赎回都会在这里形成一笔结束理财；到账金额与赎回本金的差额，计入已实现收益。</p>
+            {endedInvestments.length ? (
+              <div className="records-table-wrap">
+                <table className="records-table closed-records-table">
+                  <thead><tr><th>来源理财</th><th>赎回本金</th><th>赎回到账</th><th>已实现收益</th><th>购入日期</th><th>赎回日期</th><th>持有</th><th>收益率</th><th>年化收益</th><th aria-label="操作" /></tr></thead>
+                  <tbody>{endedInvestments.map((position) => {
+                    const source = investments.find((investment) => investment.id === position.sourceInvestmentId)
+                    const redemption = source?.redemptions?.find((item) => item.id === position.id)
+                    const annualized = source && redemption ? redemptionAnnualizedRate(source, redemption) : 0
+                    const rate = position.principal > 0 ? position.profit / position.principal : 0
+                    return <tr key={position.id}>
+                      <td><strong>{position.sourceName}</strong><small><span className={`category-label ${categoryClass(position.category)}`}>{position.category || '其他'}</span>已结束部分</small></td>
+                      <td>{privacyMode ? '••••••' : formatCurrency(position.principal)}</td>
+                      <td>{privacyMode ? '••••••' : formatCurrency(position.amount)}</td>
+                      <td className={position.profit >= 0 ? 'positive' : 'negative'}>{privacyMode ? '••••••' : formatCurrency(position.profit, true)}</td>
+                      <td>{position.purchaseDate}</td>
+                      <td>{position.redemptionDate}</td>
+                      <td>{daysHeld(position.purchaseDate, new Date(`${position.redemptionDate}T00:00:00`))} 天</td>
+                      <td className={rate >= 0 ? 'positive' : 'negative'}>{privacyMode ? '••••' : formatPercent(rate)}</td>
+                      <td className={annualized >= 0 ? 'positive' : 'negative'}>{privacyMode ? '••••' : formatPercent(annualized)}</td>
+                      <td><div className="row-actions"><button onClick={() => source && startEdit(source)} aria-label={`编辑 ${position.sourceName}`}><Edit3 size={15} /></button></div></td>
+                    </tr>
+                  })}</tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="ended-empty">尚无赎回记录。添加赎回后，已结束部分会自动显示在这里。</div>
             )}
           </article>
         </section>

@@ -168,7 +168,7 @@ function parseCsvImport(text: string): Investment[] {
   }
   return rows.slice(1).map((cells) => {
     const amount = Number(cells[indexOf('购入金额')] ?? 0)
-    const profit = Number(cellFor(cells, '剩余部分浮动收益', '当前暂时盈利') ?? 0)
+    const profit = Number(cellFor(cells, '当前浮动收益', '剩余部分浮动收益', '当前暂时盈利') ?? 0)
     const lockupValue = Number(cells[indexOf('封闭期（天）')] ?? 0)
     let redemptions: Redemption[] = []
     try { redemptions = normalizeRedemptions(JSON.parse(cells[indexOf('赎回记录(JSON)')] ?? '[]')) } catch { redemptions = [] }
@@ -245,6 +245,18 @@ function MetricCard({
   )
 }
 
+function OptionalFieldToggle({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean
+  label: string
+  onChange: (checked: boolean) => void
+}) {
+  return <label className="optional-toggle"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>
+}
+
 function App() {
   const [investments, setInvestments] = useState<Investment[]>(loadInvestments)
   const [form, setForm] = useState<FormValues>(createEmptyForm)
@@ -260,6 +272,9 @@ function App() {
   const [redemptionDate, setRedemptionDate] = useState(todayISO())
   const [redemptionPrincipal, setRedemptionPrincipal] = useState(0)
   const [redemptionAmount, setRedemptionAmount] = useState(0)
+  const [showLockup, setShowLockup] = useState(false)
+  const [showRedemptions, setShowRedemptions] = useState(false)
+  const [showNote, setShowNote] = useState(false)
   const importRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -329,6 +344,9 @@ function App() {
     setRedemptionDate(todayISO())
     setRedemptionPrincipal(0)
     setRedemptionAmount(0)
+    setShowLockup(false)
+    setShowRedemptions(false)
+    setShowNote(false)
     setFormError('')
   }
 
@@ -339,6 +357,9 @@ function App() {
     setRedemptionDate(todayISO())
     setRedemptionPrincipal(0)
     setRedemptionAmount(0)
+    setShowLockup(Boolean(normalized.lockupDays))
+    setShowRedemptions(Boolean(normalized.redemptions?.length))
+    setShowNote(Boolean(normalized.note))
     setFormError('')
     document.getElementById('record-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
@@ -349,6 +370,9 @@ function App() {
     setRedemptionDate(todayISO())
     setRedemptionPrincipal(0)
     setRedemptionAmount(0)
+    setShowLockup(false)
+    setShowRedemptions(false)
+    setShowNote(false)
     setFormError('')
   }
 
@@ -374,6 +398,25 @@ function App() {
 
   const removeRedemption = (id: string) => {
     setForm((previous) => ({ ...previous, redemptions: (previous.redemptions ?? []).filter((redemption) => redemption.id !== id) }))
+  }
+
+  const toggleLockup = (enabled: boolean) => {
+    setShowLockup(enabled)
+    if (!enabled) setForm((previous) => ({ ...previous, lockupDays: undefined }))
+  }
+
+  const toggleRedemptions = (enabled: boolean) => {
+    setShowRedemptions(enabled)
+    if (!enabled) {
+      setForm((previous) => ({ ...previous, redemptions: [] }))
+      setRedemptionPrincipal(0)
+      setRedemptionAmount(0)
+    }
+  }
+
+  const toggleNote = (enabled: boolean) => {
+    setShowNote(enabled)
+    if (!enabled) setForm((previous) => ({ ...previous, note: '' }))
   }
 
   const removeInvestment = (id: string) => {
@@ -406,7 +449,7 @@ function App() {
     if (type === 'json') {
       downloadFile(`wealth-yield-${todayISO()}.json`, JSON.stringify(investments, null, 2), 'application/json')
     } else {
-      const header = ['名称', '购入金额', '购入日期', '剩余部分浮动收益', '封闭期（天）', '类型', '已赎回本金', '已赎回到账金额', '赎回记录(JSON)', '备注']
+      const header = ['名称', '购入金额', '购入日期', '当前浮动收益', '封闭期（天）', '类型', '已赎回本金', '已赎回到账金额', '赎回记录(JSON)', '备注']
       const escape = (value: string | number | undefined) => `"${String(value ?? '').replace(/"/g, '""')}"`
       const rows = investments.map((item) => [item.name, item.amount, item.date, item.profit, item.lockupDays ?? '', item.category ?? '其他', totalRedeemedPrincipal(item), totalRedeemed(item), JSON.stringify(item.redemptions ?? []), item.note].map(escape).join(','))
       downloadFile(`wealth-yield-${todayISO()}.csv`, `\uFEFF${header.join(',')}\n${rows.join('\n')}`, 'text/csv;charset=utf-8')
@@ -502,7 +545,7 @@ function App() {
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="总投入" value={privacyMode ? '••••••' : formatCurrency(metrics.totalAmount)} hint={`${activeInvestments.length} 笔持有 · ${endedInvestments.length} 笔结束`} icon={<WalletCards size={19} />} tone="violet" />
-          <MetricCard label="累计总收益" value={privacyMode ? '••••••' : formatCurrency(metrics.totalProfit, true)} hint={<span className={profitTone}>{profitIcon} 剩余浮动收益 + 已实现收益</span>} icon={<CircleDollarSign size={19} />} tone="cyan" />
+          <MetricCard label="累计总收益" value={privacyMode ? '••••••' : formatCurrency(metrics.totalProfit, true)} hint={<span className={profitTone}>{profitIcon} 浮动收益 + 已实现收益</span>} icon={<CircleDollarSign size={19} />} tone="cyan" />
           <MetricCard label="总收益率" value={privacyMode ? '••••' : formatPercent(metrics.returnRate)} hint="累计收益 / 累计投入" icon={<TrendingUp size={19} />} tone="green" />
           <MetricCard label="年化收益率" value={privacyMode ? '••••' : formatPercent(metrics.annualizedRate)} hint={metrics.annualizedMethod === 'xirr' ? 'XIRR · 非定期现金流' : '资金加权估算'} icon={<BarChart3 size={19} />} tone="pink" />
         </section>
@@ -559,18 +602,22 @@ function App() {
                 <label>购入金额（元）<input value={form.amount || ''} type="number" min="0.01" step="0.01" placeholder="0.00" onChange={(event) => setForm((previous) => ({ ...previous, amount: Number(event.target.value) }))} /></label>
                 <label>购入日期<input value={form.date} type="text" inputMode="numeric" placeholder="YYYY-MM-DD" maxLength={10} onChange={(event) => setForm((previous) => ({ ...previous, date: event.target.value }))} /></label>
               </div>
-              <label>封闭期（天） <span>（选填）</span><input value={form.lockupDays || ''} type="number" min="1" step="1" placeholder="如：180" onChange={(event) => setForm((previous) => ({ ...previous, lockupDays: event.target.value ? Number(event.target.value) : undefined }))} /></label>
-              {form.lockupDays && formLockup.unlockDate && <div className="field-hint"><CalendarDays size={13} /> 预计 {formLockup.state === 'unlocked' ? '已解锁' : `解锁于 ${formLockup.unlockDate} · 剩余 ${formLockup.daysRemaining} 天`}</div>}
               <label>理财类型 <span>（选填）</span><select value={form.category || '其他'} onChange={(event) => setForm((previous) => ({ ...previous, category: event.target.value }))}>{CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
-              <label>剩余部分浮动收益（元）<input value={form.profit || ''} type="number" step="0.01" placeholder="可填写负数，如 -200" onChange={(event) => setForm((previous) => ({ ...previous, profit: Number(event.target.value) }))} /></label>
-              <div className="redemptions-box"><div className="redemptions-heading"><span>赎回记录 <em>（可选）</em></span><small>本金与到账差额计为已实现收益</small></div>{(form.redemptions ?? []).map((redemption) => { const redemptionProfit = redemption.amount - redeemedPrincipal(redemption); return <div className="redemption-row" key={redemption.id}><span>{redemption.date}</span><strong>本金 {formatCurrency(redeemedPrincipal(redemption))} · 到账 {formatCurrency(redemption.amount)}</strong><small className={redemptionProfit >= 0 ? 'positive' : 'negative'}>已实现 {formatCurrency(redemptionProfit, true)}</small><button type="button" aria-label={`删除 ${redemption.date} 的赎回记录`} onClick={() => removeRedemption(redemption.id)}><X size={14} /></button></div>})}<div className="redemption-entry"><input aria-label="赎回日期" type="text" inputMode="numeric" placeholder="YYYY-MM-DD" maxLength={10} value={redemptionDate} onChange={(event) => setRedemptionDate(event.target.value)} /><input aria-label="赎回本金" type="number" min="0.01" step="0.01" placeholder="赎回本金" value={redemptionPrincipal || ''} onChange={(event) => setRedemptionPrincipal(Number(event.target.value))} /><input aria-label="赎回到账金额" type="number" min="0.01" step="0.01" placeholder="赎回到账" value={redemptionAmount || ''} onChange={(event) => setRedemptionAmount(Number(event.target.value))} /><button type="button" className="icon-button" aria-label="添加赎回记录" onClick={addRedemption}><Plus size={16} /></button></div><small className="redemptions-summary">已赎回到账 {formatCurrency(formTotalRedeemed)} · 已实现收益 {formatCurrency(formRealizedProfit, true)} · 剩余本金 {formatCurrency(formRemainingPrincipal)}</small></div>
+              <label>当前浮动收益（元）<input value={form.profit || ''} type="number" step="0.01" placeholder="可填写负数，如 -200" onChange={(event) => setForm((previous) => ({ ...previous, profit: Number(event.target.value) }))} /></label>
+              <div className="optional-fields">
+                <OptionalFieldToggle checked={showLockup} label="添加封闭期" onChange={toggleLockup} />
+                {showLockup && <><label>封闭期（天）<input value={form.lockupDays || ''} type="number" min="1" step="1" placeholder="如：180" onChange={(event) => setForm((previous) => ({ ...previous, lockupDays: event.target.value ? Number(event.target.value) : undefined }))} /></label>{form.lockupDays && formLockup.unlockDate && <div className="field-hint"><CalendarDays size={13} /> 预计 {formLockup.state === 'unlocked' ? '已解锁' : `解锁于 ${formLockup.unlockDate} · 剩余 ${formLockup.daysRemaining} 天`}</div>}</>}
+                <OptionalFieldToggle checked={showRedemptions} label="添加赎回记录" onChange={toggleRedemptions} />
+                {showRedemptions && <div className="redemptions-box"><div className="redemptions-heading"><span>赎回记录</span><small>本金与到账差额计为已实现收益</small></div>{(form.redemptions ?? []).map((redemption) => { const redemptionProfit = redemption.amount - redeemedPrincipal(redemption); return <div className="redemption-row" key={redemption.id}><span>{redemption.date}</span><strong>本金 {formatCurrency(redeemedPrincipal(redemption))} · 到账 {formatCurrency(redemption.amount)}</strong><small className={redemptionProfit >= 0 ? 'positive' : 'negative'}>已实现 {formatCurrency(redemptionProfit, true)}</small><button type="button" aria-label={`删除 ${redemption.date} 的赎回记录`} onClick={() => removeRedemption(redemption.id)}><X size={14} /></button></div>})}<div className="redemption-entry"><input aria-label="赎回日期" type="text" inputMode="numeric" placeholder="YYYY-MM-DD" maxLength={10} value={redemptionDate} onChange={(event) => setRedemptionDate(event.target.value)} /><input aria-label="赎回本金" type="number" min="0.01" step="0.01" placeholder="赎回本金" value={redemptionPrincipal || ''} onChange={(event) => setRedemptionPrincipal(Number(event.target.value))} /><input aria-label="赎回到账金额" type="number" min="0.01" step="0.01" placeholder="赎回到账" value={redemptionAmount || ''} onChange={(event) => setRedemptionAmount(Number(event.target.value))} /><button type="button" className="icon-button" aria-label="添加赎回记录" onClick={addRedemption}><Plus size={16} /></button></div><small className="redemptions-summary">已赎回到账 {formatCurrency(formTotalRedeemed)} · 已实现收益 {formatCurrency(formRealizedProfit, true)} · 剩余本金 {formatCurrency(formRemainingPrincipal)}</small></div>}
+                <OptionalFieldToggle checked={showNote} label="添加备注" onChange={toggleNote} />
+                {showNote && <label>备注<textarea value={form.note} maxLength={100} placeholder="如：产品期限、风险等级等" rows={2} onChange={(event) => setForm((previous) => ({ ...previous, note: event.target.value }))} /></label>}
+              </div>
               {Number(form.amount) > 0 && <div className="form-preview"><div><span>录入后剩余价值</span><strong>{formatCurrency(formCurrentValue)}</strong></div><div><span>剩余收益率</span><strong className={formReturn >= 0 ? 'positive' : 'negative'}>{formatPercent(formReturn)}</strong></div></div>}
-              <label>备注 <span>（选填）</span><textarea value={form.note} maxLength={100} placeholder="如：产品期限、风险等级等" rows={2} onChange={(event) => setForm((previous) => ({ ...previous, note: event.target.value }))} /></label>
               {formError && <p className="form-error" role="alert">{formError}</p>}
               <button type="submit" className="primary-button form-submit">{editingId ? <CheckCircle2 size={18} /> : <Plus size={18} />}{editingId ? '保存修改' : '添加记录'}</button>
               <button type="button" onClick={cancelEdit} className="clear-form">{editingId ? '放弃修改' : '清空表单'}</button>
             </form>
-            <div className="formula-note"><Sparkles size={15} /><span>剩余收益率 = 剩余部分浮动收益 ÷ 剩余本金；每笔赎回会单独归入结束理财，并作为 XIRR 现金流。</span></div>
+            <div className="formula-note"><Sparkles size={15} /><span>剩余收益率 = 当前浮动收益 ÷ 剩余本金；每笔赎回会单独归入结束理财，并作为 XIRR 现金流。</span></div>
           </article>
 
           <article className="glass-panel records-panel">

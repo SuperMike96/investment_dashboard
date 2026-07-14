@@ -54,7 +54,8 @@ import {
 
 const STORAGE_KEY = 'wealth-yield-dashboard-investments'
 const SAVE_META_KEY = 'wealth-yield-dashboard-last-saved'
-const CATEGORIES = ['现金管理', '固收理财', '基金', '股票/ETF', '黄金/商品', '其他']
+const DEFAULT_CATEGORY = '理财产品'
+const CATEGORIES = [DEFAULT_CATEGORY, '现金管理', '基金', '股票/ETF', '黄金/商品', '其他']
 
 type FormValues = Omit<Investment, 'id'>
 type ChartRange = '30D' | '90D' | '1Y' | 'ALL'
@@ -65,7 +66,7 @@ const createEmptyForm = (): FormValues => ({
   date: todayISO(),
   profit: 0,
   lockupDays: undefined,
-  category: '其他',
+  category: DEFAULT_CATEGORY,
   redemptions: [],
   note: '',
 })
@@ -106,6 +107,11 @@ function normalizeRedemptions(value: unknown): Redemption[] {
     })
 }
 
+function normalizeCategory(category?: string) {
+  if (category === '固收理财') return DEFAULT_CATEGORY
+  return category || DEFAULT_CATEGORY
+}
+
 /** Upgrades legacy full-redemption records without changing their cash-flow result. */
 function normalizeInvestment(value: Investment): Investment {
   const amount = Number(value.amount)
@@ -124,6 +130,7 @@ function normalizeInvestment(value: Investment): Investment {
     amount,
     profit: isLegacyFullRedemption ? 0 : profit,
     lockupDays: value.lockupDays ? Number(value.lockupDays) : undefined,
+    category: normalizeCategory(value.category),
     redemptions: redemptions.length
       ? redemptions.map((redemption) => isLegacyFullRedemption && redemption.id === onlyRedemption?.id ? { ...redemption, principal: amount } : redemption)
       : undefined,
@@ -172,13 +179,13 @@ function parseCsvImport(text: string): Investment[] {
     const lockupValue = Number(cells[indexOf('封闭期（天）')] ?? 0)
     let redemptions: Redemption[] = []
     try { redemptions = normalizeRedemptions(JSON.parse(cells[indexOf('赎回记录(JSON)')] ?? '[]')) } catch { redemptions = [] }
-    return normalizeInvestment({ id: crypto.randomUUID(), name: cells[indexOf('名称')] ?? '', amount, date: cells[indexOf('购入日期')] ?? '', profit, lockupDays: lockupValue > 0 ? lockupValue : undefined, category: cells[indexOf('类型')] ?? '其他', redemptions, note: cells[indexOf('备注')] ?? '' })
+    return normalizeInvestment({ id: crypto.randomUUID(), name: cells[indexOf('名称')] ?? '', amount, date: cells[indexOf('购入日期')] ?? '', profit, lockupDays: lockupValue > 0 ? lockupValue : undefined, category: normalizeCategory(cells[indexOf('类型')]), redemptions, note: cells[indexOf('备注')] ?? '' })
   }).filter((item) => item.name && item.amount > 0 && item.date && Number.isFinite(item.profit))
 }
 
 function categoryClass(category?: string) {
   if (category === '现金管理') return 'category-label--cash'
-  if (category === '固收理财') return 'category-label--fixed'
+  if (category === DEFAULT_CATEGORY) return 'category-label--fixed'
   if (category === '基金') return 'category-label--fund'
   if (category === '股票/ETF') return 'category-label--equity'
   if (category === '黄金/商品') return 'category-label--commodity'
@@ -297,7 +304,7 @@ function App() {
   const visibleInvestments = useMemo(() => {
     return [...activeInvestments]
       .filter((investment) => {
-        if (categoryFilter !== 'all' && (investment.category || '其他') !== categoryFilter) return false
+        if (categoryFilter !== 'all' && normalizeCategory(investment.category) !== categoryFilter) return false
         if (filter === 'all') return true
         if (filter === 'locked') return lockupStatus(investment.date, investment.lockupDays).state === 'active'
         return filter === 'profit' ? investment.profit >= 0 : investment.profit < 0
@@ -333,7 +340,7 @@ function App() {
       amount,
       profit: Math.abs(amount - redeemedPrincipalTotal) < 0.005 ? 0 : profit,
       lockupDays: form.lockupDays ? Number(form.lockupDays) : undefined,
-      category: form.category || '其他',
+      category: normalizeCategory(form.category),
       redemptions: redemptions.length ? redemptions : undefined,
       note: form.note?.trim(),
     }
@@ -353,7 +360,7 @@ function App() {
   const startEdit = (investment: Investment) => {
     setEditingId(investment.id)
     const normalized = normalizeInvestment(investment)
-    setForm({ name: normalized.name, amount: normalized.amount, date: normalized.date, profit: normalized.profit, lockupDays: normalized.lockupDays, category: normalized.category ?? '其他', redemptions: normalizeRedemptions(normalized.redemptions), note: normalized.note ?? '' })
+    setForm({ name: normalized.name, amount: normalized.amount, date: normalized.date, profit: normalized.profit, lockupDays: normalized.lockupDays, category: normalizeCategory(normalized.category), redemptions: normalizeRedemptions(normalized.redemptions), note: normalized.note ?? '' })
     setRedemptionDate(todayISO())
     setRedemptionPrincipal(0)
     setRedemptionAmount(0)
@@ -451,7 +458,7 @@ function App() {
     } else {
       const header = ['名称', '购入金额', '购入日期', '当前浮动收益', '封闭期（天）', '类型', '已赎回本金', '已赎回到账金额', '赎回记录(JSON)', '备注']
       const escape = (value: string | number | undefined) => `"${String(value ?? '').replace(/"/g, '""')}"`
-      const rows = investments.map((item) => [item.name, item.amount, item.date, item.profit, item.lockupDays ?? '', item.category ?? '其他', totalRedeemedPrincipal(item), totalRedeemed(item), JSON.stringify(item.redemptions ?? []), item.note].map(escape).join(','))
+      const rows = investments.map((item) => [item.name, item.amount, item.date, item.profit, item.lockupDays ?? '', normalizeCategory(item.category), totalRedeemedPrincipal(item), totalRedeemed(item), JSON.stringify(item.redemptions ?? []), item.note].map(escape).join(','))
       downloadFile(`wealth-yield-${todayISO()}.csv`, `\uFEFF${header.join(',')}\n${rows.join('\n')}`, 'text/csv;charset=utf-8')
     }
     setToast(`已导出 ${type.toUpperCase()} 文件`)
@@ -501,7 +508,7 @@ function App() {
   const formRealizedProfit = (form.redemptions ?? []).reduce((sum, redemption) => sum + redemption.amount - redeemedPrincipal(redemption), 0)
   const formCurrentValue = formRemainingPrincipal + Number(form.profit)
   const categoryTotals = Object.entries(activeInvestments.reduce<Record<string, number>>((totals, investment) => {
-    const category = investment.category || '其他'
+    const category = normalizeCategory(investment.category)
     totals[category] = (totals[category] || 0) + remainingPrincipal(investment)
     return totals
   }, {})).sort(([, amountA], [, amountB]) => amountB - amountA)
@@ -602,7 +609,7 @@ function App() {
                 <label>购入金额（元）<input value={form.amount || ''} type="number" min="0.01" step="0.01" placeholder="0.00" onChange={(event) => setForm((previous) => ({ ...previous, amount: Number(event.target.value) }))} /></label>
                 <label>购入日期<input value={form.date} type="text" inputMode="numeric" placeholder="YYYY-MM-DD" maxLength={10} onChange={(event) => setForm((previous) => ({ ...previous, date: event.target.value }))} /></label>
               </div>
-              <label>理财类型 <span>（选填）</span><select value={form.category || '其他'} onChange={(event) => setForm((previous) => ({ ...previous, category: event.target.value }))}>{CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+              <label>理财类型<select value={normalizeCategory(form.category)} onChange={(event) => setForm((previous) => ({ ...previous, category: event.target.value }))}>{CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
               <label>当前浮动收益（元）<input value={form.profit || ''} type="number" step="0.01" placeholder="可填写负数，如 -200" onChange={(event) => setForm((previous) => ({ ...previous, profit: Number(event.target.value) }))} /></label>
               <div className="optional-fields">
                 <OptionalFieldToggle checked={showLockup} label="添加封闭期" onChange={toggleLockup} />
@@ -646,7 +653,7 @@ function App() {
                     const realized = realizedProfit(investment)
                     const annualized = annualizedRate(investment)
                     return <tr key={investment.id}>
-                      <td><strong>{investment.name}</strong><small><span className={`category-label ${categoryClass(investment.category)}`}>{investment.category || '其他'}</span>{investment.note || '未添加备注'}</small></td>
+                      <td><strong>{investment.name}</strong><small><span className={`category-label ${categoryClass(normalizeCategory(investment.category))}`}>{normalizeCategory(investment.category)}</span>{investment.note || '未添加备注'}</small></td>
                       <td>{privacyMode ? '••••••' : formatCurrency(investment.amount)}</td>
                       <td>{privacyMode ? '••••••' : formatCurrency(remainingPrincipal(investment))}</td>
                       <td className={realized >= 0 ? 'positive' : 'negative'}>{investment.redemptions?.length ? <><span>{privacyMode ? '••••••' : formatCurrency(realized, true)}</span><small>{investment.redemptions.length} 次赎回</small></> : '—'}</td>
@@ -684,7 +691,7 @@ function App() {
                     const annualized = source && redemption ? redemptionAnnualizedRate(source, redemption) : 0
                     const rate = position.principal > 0 ? position.profit / position.principal : 0
                     return <tr key={position.id}>
-                      <td><strong>{position.sourceName}</strong><small><span className={`category-label ${categoryClass(position.category)}`}>{position.category || '其他'}</span>已结束部分</small></td>
+                      <td><strong>{position.sourceName}</strong><small><span className={`category-label ${categoryClass(normalizeCategory(position.category))}`}>{normalizeCategory(position.category)}</span>已结束部分</small></td>
                       <td>{privacyMode ? '••••••' : formatCurrency(position.principal)}</td>
                       <td>{privacyMode ? '••••••' : formatCurrency(position.amount)}</td>
                       <td className={position.profit >= 0 ? 'positive' : 'negative'}>{privacyMode ? '••••••' : formatCurrency(position.profit, true)}</td>
